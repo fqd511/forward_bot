@@ -6,16 +6,19 @@
   "type": "module",
   "scripts": {
     "dev": "node index.js",
+    "forward": "node forward-cli.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "telegraf": "^4.16.3"
+    "dotenv": "16.4.5",
+    "https-proxy-agent": "9.0.0",
+    "telegraf": "4.16.3",
+    "telegram": "2.26.22"
   },
   "devDependencies": {
-    "prettier": "^3.2.5",
-    "typegram": "^5.2.0"
+    "prettier": "3.2.5",
+    "typegram": "5.2.0"
   }
 }

@@ -1,0 +1,47 @@
+{
+  "__comment_1": "==========================================================================",
+  "__comment_2": "               Telegram 消息转发工具 配置文件 (forward-config.json)",
+  "__comment_3": "==========================================================================",
+  "__comment_4": "1. 本配置文件修改后，重新启动脚本即可生效（无需重启服务器）。",
+  "__comment_5": "2. 【文本过滤】说明：",
+  "__comment_6": "   - excludeRegex: 排除正则（匹配到内容的消息将被忽略，不进行转发。常用于过滤广告）",
+  "__comment_7": "     - 示例: \"广告|推广|电报群|加群|t\\.me\\/\" (过滤含有广告、推广或电报链接的消息)",
+  "__comment_8": "   - includeRegex: 包含正则（只有匹配到该正则的消息才会被转发，否则忽略。留空表示不限制）",
+  "__comment_9": "     - 示例: \"(?i)bitcoin|eth|btc\" (仅转发提到比特币、以太坊等关键字的消息，(?i)表示忽略大小写)",
+  "__comment_10": "3. 【媒体类型过滤】说明：设置为 true 允许转发，设置为 false 则直接跳过该类型的消息：",
+  "__comment_11": "   - allowTextOnly: 纯文本消息",
+  "__comment_12": "   - allowPhoto: 图片消息",
+  "__comment_13": "   - allowVideo: 视频消息",
+  "__comment_14": "   - allowDocument: 普通文件/压缩包/安装包等文档消息",
+  "__comment_15": "   - allowSticker: 表情贴纸",
+  "__comment_16": "   - allowAnimation: 动图/GIF 消息",
+  "__comment_17": "   - allowAudio: 音频/音乐消息",
+  "__comment_18": "   - allowVoice: 语音消息",
+  "__comment_19": "4. 【其他设置】说明：",
+  "__comment_20": "   - showSenderNames: 转发消息时是否显示原消息的来源（如“转发自 X”）。设置为 true 则显示来源；设置为 false 则隐藏来源，接收方看到的消息就像由你本人/本Bot发送的一样。",
+  "__comment_21": "   - jitterRange: 随机时间抖动的范围系数 [最小值, 最大值]。如 [0.85, 1.35] 表示实际延时会在基础 delayMs 的 85% ~ 135% 之间随机摆动，使行为更加真人化。",
+
+  "filters": {
+    "text": {
+      "excludeRegex": "广告|推广|内部群|电报群|加群|合作联系|t\\.me\\/",
+      "includeRegex": ""
+    },
+    "mediaTypes": {
+      "allowTextOnly": true,
+      "allowPhoto": true,
+      "allowVideo": true,
+      "allowDocument": true,
+      "allowSticker": false,
+      "allowAnimation": false,
+      "allowAudio": true,
+      "allowVoice": false
+    }
+  },
+
+  "settings": {
+    "maxConsecutiveFailures": 30,
+    "delayMs": 1500,
+    "jitterRange": [0.95, 1.45],
+    "showSenderNames": true
+  }
+}

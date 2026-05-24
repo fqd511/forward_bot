@@ -610,7 +610,7 @@ async function main() {
 	} else {
 		// 生成 TUI 目标频道多选菜单
 		const destChoices = resolvedDestinations.map((destObj) => {
-			return { title: `${destObj.title} (${destObj.address})`, value: destObj, selected: true };
+			return { title: `${destObj.title} (${destObj.address})`, value: destObj, selected: false };
 		});
 		destChoices.push({ title: `${colors.green}[全部同时发送]${colors.reset}`, value: "all" });
 
@@ -648,7 +648,7 @@ async function main() {
 		const startAns = await prompts({
 			type: "text",
 			name: "link",
-			message: "请输入【起始】消息链接 (从它的下一条消息开始转发):",
+			message: "请输入【起始】消息链接 (从该消息开始转发):",
 			validate: val => !val.trim() ? "起始消息链接不能为空！" : true
 		});
 		
@@ -733,9 +733,9 @@ async function main() {
 	const targetEndId = endParsed ? endParsed.messageId : latestId;
 	const sourceTitle = sourceEntity.title || sourceEntity.username || parsed.chatId;
 	if (targetEndId) {
-		logInfo(`任务范围: 从频道 【${colors.bright}${sourceTitle}${colors.reset}】 的消息 #${colors.bright}${parsed.messageId + 1}${colors.reset} 遍历转发至 #${colors.bright}${targetEndId}${colors.reset}\n`);
+		logInfo(`任务范围: 从频道 【${colors.bright}${sourceTitle}${colors.reset}】 的消息 #${colors.bright}${parsed.messageId}${colors.reset} 遍历转发至 #${colors.bright}${targetEndId}${colors.reset}\n`);
 	} else {
-		logInfo(`任务范围: 从频道 【${colors.bright}${sourceTitle}${colors.reset}】 的消息 #${colors.bright}${parsed.messageId + 1}${colors.reset} 转发至最新消息，连续空消息触发上限时自动停止。\n`);
+		logInfo(`任务范围: 从频道 【${colors.bright}${sourceTitle}${colors.reset}】 的消息 #${colors.bright}${parsed.messageId}${colors.reset} 转发至最新消息，连续空消息触发上限时自动停止。\n`);
 	}
 
 	// 6. 运行参数与过滤规则配置 (读取自已加载了默认值的 config 对象)
@@ -921,7 +921,7 @@ async function main() {
 	clearPreviousLines(8); // 完美清理确认提问
 	logSuccess("🚀 正在启动用户身份转发任务 (支持媒体组自动合并与消息过滤)... \n");
 
-	let currentId = parsed.messageId + 1;
+	let currentId = parsed.messageId;
 	let consecutiveFailures = 0;
 	let successCount = 0;
 
@@ -1100,6 +1100,8 @@ async function main() {
 	console.log(`${colors.bright}${colors.cyan}=========================================`);
 	console.log(`   任务结束！共成功转发了 ${colors.green}${successCount}${colors.cyan} 条消息。`);
 	console.log(`=========================================${colors.reset}\n`);
+
+	process.exit(0);
 }
 
 main().catch((err) => {

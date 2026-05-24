@@ -20,6 +20,7 @@
   "__comment_19": "4. 【其他设置】说明：",
   "__comment_20": "   - showSenderNames: 转发消息时是否显示原消息的来源（如“转发自 X”）。设置为 true 则显示来源；设置为 false 则隐藏来源，接收方看到的消息就像由你本人/本Bot发送的一样。",
   "__comment_21": "   - jitterRange: 随机时间抖动的范围系数 [最小值, 最大值]。如 [0.85, 1.35] 表示实际延时会在基础 delayMs 的 85% ~ 135% 之间随机摆动，使行为更加真人化。",
+  "__comment_22": "   - destinations: 目标转发频道/群组的用户名或 ID 列表（支持多个目标，用数组形式配制）。",
 
   "filters": {
     "text": {
@@ -39,6 +40,7 @@
   },
 
   "settings": {
+    "destinations": [],
     "maxConsecutiveFailures": 30,
     "delayMs": 1500,
     "jitterRange": [0.95, 1.45],

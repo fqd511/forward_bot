@@ -52,6 +52,7 @@ let config = {
 		}
 	},
 	settings: {
+		destinations: [],
 		maxConsecutiveFailures: 30,
 		delayMs: 1500,
 		showSenderNames: true,
@@ -77,7 +78,6 @@ if (fs.existsSync(CONFIG_FILE)) {
 // 检查环境变量
 const API_ID = process.env.API_ID ? parseInt(process.env.API_ID, 10) : null;
 const API_HASH = process.env.API_HASH;
-const DEST_CHANNEL = process.env.DEST_CHANNEL;
 
 if (!API_ID || isNaN(API_ID)) {
 	logError("环境变量 API_ID 未设置或格式错误！请检查 .env 文件。");
@@ -87,8 +87,28 @@ if (!API_HASH) {
 	logError("环境变量 API_HASH 未设置！请检查 .env 文件。");
 	process.exit(1);
 }
-if (!DEST_CHANNEL) {
-	logError("环境变量 DEST_CHANNEL 未设置！请检查 .env 文件。");
+
+// 检查配置文件与环境变量中的目标频道并进行合并去重
+let rawDestinations = [];
+
+// 1. 从配置文件加载
+if (config.settings && Array.isArray(config.settings.destinations)) {
+	rawDestinations = [...config.settings.destinations];
+}
+
+// 2. 从环境变量加载 (支持英文逗号分隔的多个频道)
+if (process.env.DEST_CHANNEL) {
+	const envDests = process.env.DEST_CHANNEL.split(",")
+		.map(d => d.trim())
+		.filter(d => d.length > 0);
+	rawDestinations = [...rawDestinations, ...envDests];
+}
+
+// 3. 合并去重
+const DESTINATIONS = [...new Set(rawDestinations)];
+
+if (DESTINATIONS.length === 0) {
+	logError("未在配置文件 forward-config.json 中找到 destinations，也未在 .env 中设置 DEST_CHANNEL 环境变量！请至少配置其中之一。");
 	process.exit(1);
 }
 
@@ -139,6 +159,24 @@ function parseTelegramLink(link) {
 	}
 
 	return null;
+}
+
+/**
+ * 获取友好的消息类型描述 (用于日志输出)
+ */
+function getMessageTypeDescription(msg) {
+	if (!msg.media) return "纯文本";
+	const className = msg.media.className;
+	if (className === "MessageMediaPhoto") return "图片";
+	if (className === "MessageMediaDocument") {
+		const mime = msg.media.document?.mimeType || "";
+		if (mime.includes("image/webp")) return "贴纸";
+		if (mime.includes("image/gif")) return "GIF动图";
+		if (mime.startsWith("video/")) return "视频";
+		if (mime.startsWith("audio/")) return "音频";
+		return "文件";
+	}
+	return "媒体";
 }
 
 /**
@@ -276,7 +314,7 @@ async function main() {
 	console.log(`=========================================${colors.reset}\n`);
 
 	logInfo(`当前配置:`);
-	logInfo(`目标频道 (DEST_CHANNEL): ${colors.bright}${DEST_CHANNEL}${colors.reset}`);
+	logInfo(`目标频道数量: ${colors.bright}${DESTINATIONS.length}${colors.reset} -> ${colors.gray}[${DESTINATIONS.join(", ")}]${colors.reset}`);
 
 	// 1. 确保 .sessions 目录存在并获取已登录账号
 	const SESSIONS_DIR = path.join(process.cwd(), ".sessions");
@@ -359,6 +397,67 @@ async function main() {
 		process.exit(1);
 	}
 
+	// 2.5 获取并加载所有可用的目标频道实体信息 (用于生成直观易读的选择菜单)
+	logInfo("正在拉取已配制目标频道的名称与状态以生成可读性选择菜单...");
+	const resolvedDestinations = [];
+	for (const dest of DESTINATIONS) {
+		try {
+			const entity = await client.getEntity(dest);
+			resolvedDestinations.push({
+				address: dest,
+				title: entity.title || entity.username || dest,
+				entity: entity
+			});
+		} catch (err) {
+			logWarn(`无法连接到目标频道 [${dest}]，已从本次菜单中临时剔除。原因: ${err.message}`);
+		}
+	}
+
+	if (resolvedDestinations.length === 0) {
+		logError("错误：配置文件中所配制的目标频道均无法访问，请检查 forward-config.json 的 destinations 配置！");
+		rl.close();
+		process.exit(1);
+	}
+
+	let activeDestEntities = [];
+	if (resolvedDestinations.length === 1) {
+		activeDestEntities = [resolvedDestinations[0].entity];
+		logInfo(`已自动选择唯一配置的目标频道: ${colors.bright}${resolvedDestinations[0].title}${colors.reset} (${resolvedDestinations[0].address})\n`);
+	} else {
+		console.log(`\n${colors.bright}可供选择的目标频道列表:${colors.reset}`);
+		resolvedDestinations.forEach((destObj, index) => {
+			console.log(`  ${colors.cyan}${index + 1}.${colors.reset} ${colors.bright}${destObj.title}${colors.reset} (${colors.gray}${destObj.address}${colors.reset})`);
+		});
+		console.log(`  ${colors.cyan}${resolvedDestinations.length + 1}.${colors.reset} ${colors.green}[全部同时发送]${colors.reset}`);
+
+		let chosenIndices = [];
+		while (chosenIndices.length === 0) {
+			const ans = await rl.question(`\n请选择本次要转发的目标频道序号 (支持多选，用逗号分隔，如 '1' 或 '1,3' 或 '${resolvedDestinations.length + 1}'): `);
+			const parts = ans.split(",").map(p => p.trim());
+			
+			for (const part of parts) {
+				const num = parseInt(part, 10);
+				if (!isNaN(num)) {
+					if (num === resolvedDestinations.length + 1) {
+						chosenIndices = resolvedDestinations.map((_, i) => i);
+						break;
+					} else if (num >= 1 && num <= resolvedDestinations.length) {
+						chosenIndices.push(num - 1);
+					}
+				}
+			}
+			
+			if (chosenIndices.length === 0) {
+				logWarn("无效的序号选择，请重新选择！");
+			}
+		}
+		
+		const uniqueIndices = [...new Set(chosenIndices)];
+		activeDestEntities = uniqueIndices.map(i => resolvedDestinations[i].entity);
+		const chosenTitles = uniqueIndices.map(i => resolvedDestinations[i].title);
+		logSuccess(`成功选择 ${colors.bright}${activeDestEntities.length}${colors.reset} 个目标频道: [${chosenTitles.join(", ")}]\n`);
+	}
+
 	// 3. 获取并解析消息链接（起始 & 结束）
 	let parsed = null;
 	while (!parsed) {
@@ -373,7 +472,7 @@ async function main() {
 			logError("无法解析该链接。请输入正确的 Telegram 消息链接。");
 			console.log(`支持的格式:
   - 公开频道: https://t.me/channel_username/123
-  - 私有频道: https://t.me/c/123456789/123\n`);
+  - Private channel: https://t.me/c/123456789/123\n`);
 		}
 	}
 
@@ -406,7 +505,7 @@ async function main() {
 	}
 
 	logSuccess(`成功解析链接！`);
-	logInfo(`源频道/群组: ${colors.bright}${parsed.chatId}${colors.reset}`);
+	logInfo(`源频道/群组 ID: ${colors.bright}${parsed.chatId}${colors.reset}`);
 	logInfo(`起始消息 ID: ${colors.bright}${parsed.messageId}${colors.reset}`);
 	if (endParsed) {
 		logInfo(`设定结束消息 ID: ${colors.bright}${endParsed.messageId}${colors.reset}`);
@@ -414,27 +513,17 @@ async function main() {
 		logInfo(`未指定结束链接，将自动转发到频道最新一条消息。`);
 	}
 
-	// 4. 解析源和目标实体，确保权限和可见性
-	logInfo("正在验证源和目标频道的可见性与访问权限...");
+	// 4. 解析并验证源频道可见性与访问权限
+	logInfo("正在验证源频道的可见性与访问权限...");
 	let sourceEntity = null;
-	let destEntity = null;
+	const destEntities = [...activeDestEntities]; // 目标实体在上一步已成功解析并过滤，这里直接复用即可！
 
 	try {
 		sourceEntity = await client.getEntity(parsed.chatId);
-		logSuccess(`成功定位源频道: ${colors.bright}${sourceEntity.title || sourceEntity.username || "私有群组"}${colors.reset}`);
+		logSuccess(`成功定位源频道: ${colors.bright}${sourceEntity.title || sourceEntity.username || "私有群组"}${colors.reset}\n`);
 	} catch (err) {
 		logError(`无法访问源频道！错误: ${err.message}`);
 		logError("请确保你的个人账号已经加入/关注了该频道。");
-		rl.close();
-		process.exit(1);
-	}
-
-	try {
-		destEntity = await client.getEntity(DEST_CHANNEL);
-		logSuccess(`成功定位目标频道: ${colors.bright}${destEntity.title || destEntity.username || "目标群组"}${colors.reset}\n`);
-	} catch (err) {
-		logError(`无法访问目标频道 (${DEST_CHANNEL})！错误: ${err.message}`);
-		logError("请确保你的个人账号在此目标频道中拥有发布消息的权限。");
 		rl.close();
 		process.exit(1);
 	}
@@ -453,10 +542,11 @@ async function main() {
 
 	// 设定本次任务的物理终点 ID
 	const targetEndId = endParsed ? endParsed.messageId : latestId;
+	const sourceTitle = sourceEntity.title || sourceEntity.username || parsed.chatId;
 	if (targetEndId) {
-		logInfo(`任务范围: 从消息 #${colors.bright}${parsed.messageId + 1}${colors.reset} 遍历转发至 #${colors.bright}${targetEndId}${colors.reset}\n`);
+		logInfo(`任务范围: 从频道 【${colors.bright}${sourceTitle}${colors.reset}】 的消息 #${colors.bright}${parsed.messageId + 1}${colors.reset} 遍历转发至 #${colors.bright}${targetEndId}${colors.reset}\n`);
 	} else {
-		logInfo(`任务范围: 从消息 #${colors.bright}${parsed.messageId + 1}${colors.reset} 转发至最新消息，连续空消息触发上限时自动停止。\n`);
+		logInfo(`任务范围: 从频道 【${colors.bright}${sourceTitle}${colors.reset}】 的消息 #${colors.bright}${parsed.messageId + 1}${colors.reset} 转发至最新消息，连续空消息触发上限时自动停止。\n`);
 	}
 
 	// 6. 运行参数配置 (直接读取最头部已初始化默认值的 config 对象)
@@ -575,11 +665,13 @@ async function main() {
 
 				if (validGroupedIds.length > 0) {
 					logInfo(`正在合并打包转发有效媒体组成员: [${validGroupedIds.join(", ")}]...`);
-					await client.forwardMessages(destEntity, {
-						messages: validGroupedIds,
-						fromPeer: sourceEntity,
-						dropAuthor: dropAuthor
-					});
+					for (const destEntity of destEntities) {
+						await client.forwardMessages(destEntity, {
+							messages: validGroupedIds,
+							fromPeer: sourceEntity,
+							dropAuthor: dropAuthor
+						});
+					}
 					logSuccess(`[成组转发成功] 媒体组 [${validGroupedIds.join(", ")}] 转发成功！`);
 					successCount += validGroupedIds.length;
 				} else {
@@ -595,13 +687,17 @@ async function main() {
 					logWarn(`[过滤跳过] 消息 #${currentId} 未通过过滤条件（原因：${filterResult.reason}）`);
 				} else {
 					// 转发单条消息
-					await client.forwardMessages(destEntity, {
-						messages: [currentId],
-						fromPeer: sourceEntity,
-						dropAuthor: dropAuthor
-					});
+					for (const destEntity of destEntities) {
+						await client.forwardMessages(destEntity, {
+							messages: [currentId],
+							fromPeer: sourceEntity,
+							dropAuthor: dropAuthor
+						});
+					}
 
-					logSuccess(`消息 #${currentId} 转发成功！`);
+					const sneakPeek = msg.message ? ` "${msg.message.trim().substring(0, 25).replace(/\n/g, " ")}..."` : "";
+					const msgTypeDesc = getMessageTypeDescription(msg);
+					logSuccess(`[${msgTypeDesc}] 消息 #${currentId}${sneakPeek} 转发成功！`);
 					successCount++;
 				}
 				currentId++;

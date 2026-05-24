@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { TelegramClient, Api, sessions } from "telegram";
+import prompts from "prompts";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import fs from "node:fs";
@@ -33,6 +34,15 @@ function logWarn(msg) {
 
 function logError(msg) {
 	console.log(`${colors.red}[错误]${colors.reset} ${msg}`);
+}
+
+/**
+ * 清除终端历史行
+ */
+function clearPreviousLines(numLines) {
+	for (let i = 0; i < numLines; i++) {
+		process.stdout.write("\x1B[1A\x1B[2K");
+	}
 }
 
 // 1. 读取本地配置文件 forward-config.json并初始化默认值
@@ -323,17 +333,21 @@ async function forwardComments(msg, sourceEntity, destEntities, dropAuthor, clie
 		return 0;
 	}
 
-	if (!msg.replies || !msg.replies.replies_peer_id || !msg.replies.replies_id) {
+	// 兼容 GramJS 驼峰和下划线的字段解析
+	const repliesPeerId = msg.replies?.repliesPeerId || msg.replies?.replies_peer_id;
+	const repliesId = msg.replies?.repliesId || msg.replies?.replies_id;
+
+	if (!msg.replies || !repliesPeerId || !repliesId) {
 		return 0;
 	}
 
-	const threadRootMsgId = msg.replies.replies_id;
+	const threadRootMsgId = repliesId;
 	const mode = commentsConfig.mode || "all";
 
 	// 1. 定位讨论群实体
 	let discussionPeer;
 	try {
-		discussionPeer = await clientInstance.getEntity(msg.replies.replies_peer_id);
+		discussionPeer = await clientInstance.getEntity(repliesPeerId);
 	} catch (err) {
 		logWarn(`无法解析讨论群实体: ${err.message}，跳过评论区转发。`);
 		return 0;
@@ -367,20 +381,15 @@ async function forwardComments(msg, sourceEntity, destEntities, dropAuthor, clie
 		return 0;
 	}
 
-	// 4. 按 mode 过滤: "media" → 仅转发含媒体(图片/视频/文件)的评论
+	// 4. 按 mode 过滤: "media" → 仅转发含媒体的评论
 	let commentsToForward;
 	if (mode === "media") {
 		commentsToForward = allComments.filter(m => {
-			if (!m.media) return false;
-			const cn = m.media.className;
-			if (cn === "MessageMediaWebPage") return false;
-			if (cn === "MessageMediaUnsupported") return false;
-			if (cn === "MessageMediaPhoto") return true;
-			if (cn === "MessageMediaDocument") {
-				const mime = m.media.document?.mimeType || "";
-				if (mime.includes("image/webp")) return false;
-				if (mime.includes("image/gif")) return false;
-				if (mime.includes("audio/")) return false;
+			// 使用最健壮的高阶 Getter 进行媒体类型判断
+			if (m.photo || m.video || m.audio || m.voice) return true;
+			if (m.document) {
+				const mime = m.document.mimeType || "";
+				if (mime.includes("image/webp")) return false; // 过滤贴纸
 				return true;
 			}
 			return false;
@@ -416,8 +425,6 @@ async function forwardComments(msg, sourceEntity, destEntities, dropAuthor, clie
 }
 
 async function main() {
-	const rl = readline.createInterface({ input, output });
-
 	console.log(`${colors.bright}${colors.cyan}=========================================`);
 	console.log("   Telegram 消息自动转发工具 (用户身份版)   ");
 	console.log(`=========================================${colors.reset}\n`);
@@ -439,84 +446,76 @@ async function main() {
 	let phoneNumber = "";
 	let isBotMode = false;
 
-	console.log(`\n${colors.bright}可供选择的执行身份列表:${colors.reset}`);
-	
-	let menuIndex = 1;
-	const userSessionMapping = [];
-
-	// A. 列出已有用户账号 (同时支持读取保存的名字)
+	// 生成 TUI 登录选择菜单
+	const identityChoices = [];
 	if (sessionFiles.length > 0) {
 		sessionFiles.forEach((file) => {
 			const accName = file.replace(".session", "");
-			let displayName = accName;
+			let titleStr = accName;
 			
 			const nameFilePath = path.join(SESSIONS_DIR, file.replace(".session", ".name"));
 			if (fs.existsSync(nameFilePath)) {
 				const savedName = fs.readFileSync(nameFilePath, "utf-8").trim();
-				displayName = `${colors.bright}${savedName}${colors.reset} (手机: ${accName})`;
-			} else {
-				displayName = `${colors.bright}${accName}${colors.reset}`;
+				titleStr = `${savedName} (手机: ${accName})`;
 			}
-
-			console.log(`  ${colors.cyan}${menuIndex}.${colors.reset} 用户账号: ${displayName}`);
-			userSessionMapping.push({ index: menuIndex, file: file });
-			menuIndex++;
+			identityChoices.push({ title: `👤 用户账号: ${titleStr}`, value: { type: "existing", file } });
 		});
 	}
 
-	// B. 列出 Bot 身份选项 (若 .env 中配置了 BOT_TOKEN)
-	const botOptionIndex = menuIndex;
 	if (BOT_TOKEN) {
 		const botId = BOT_TOKEN.split(":")[0];
 		const botNameFilePath = path.join(SESSIONS_DIR, `bot_${botId}.name`);
-		let botDisplayName = "使用 env 中的 BOT_TOKEN 进行转发";
+		let botTitle = `Bot 账号 (令牌 ID: ${botId})`;
 		if (fs.existsSync(botNameFilePath)) {
 			const savedBotName = fs.readFileSync(botNameFilePath, "utf-8").trim();
-			botDisplayName = `${colors.bright}${savedBotName}${colors.reset} (Bot 令牌: ${botId})`;
-		} else {
-			botDisplayName = `Bot 账号 (令牌 ID: ${botId})`;
+			botTitle = `${savedBotName} (Bot ID: ${botId})`;
 		}
-
-		console.log(`  ${colors.cyan}${botOptionIndex}.${colors.reset} ${colors.yellow}[Bot 身份] ${botDisplayName}${colors.reset}`);
-		menuIndex++;
+		identityChoices.push({ title: `👑 [Bot 身份] ${botTitle}`, value: { type: "bot" } });
 	}
 
-	// C. 新用户登录选项
-	const newUserOptionIndex = menuIndex;
-	console.log(`  ${colors.cyan}${newUserOptionIndex}.${colors.reset} ${colors.green}[+] 登录全新用户账号${colors.reset}`);
+	identityChoices.push({ title: `[+] 登录全新用户账号`, value: { type: "new" } });
 
-	let choice = -1;
-	while (choice < 1 || choice > menuIndex) {
-		const ans = await rl.question(`\n请选择登录账号序号 (1 - ${menuIndex}): `);
-		const parsedChoice = parseInt(ans.trim(), 10);
-		if (!isNaN(parsedChoice)) {
-			choice = parsedChoice;
-		}
+	const identityAns = await prompts({
+		type: "select",
+		name: "identity",
+		message: "请选择执行身份:",
+		choices: identityChoices
+	});
+
+	if (!identityAns.identity) {
+		logWarn("操作已取消。");
+		process.exit(0);
 	}
 
-	if (choice === newUserOptionIndex) {
-		// 登录新账号
-		while (!phoneNumber) {
-			const numInput = await rl.question(`\n${colors.bright}请输入你要登录的手机号 (带国家码，如 +86138xxxxxxxx):${colors.reset} `);
-			phoneNumber = numInput.trim();
-		}
+	const choiceType = identityAns.identity.type;
+	if (choiceType === "new") {
+		const numAns = await prompts({
+			type: "text",
+			name: "phone",
+			message: "请输入你要登录的手机号 (带国家码，如 +86138xxxxxxxx):",
+			validate: val => !val.trim() ? "手机号不能为空！" : true
+		});
+		phoneNumber = numAns.phone.trim();
 		selectedSessionFile = path.join(SESSIONS_DIR, `${phoneNumber}.session`);
-	} else if (BOT_TOKEN && choice === botOptionIndex) {
-		// 以 Bot 身份登录并执行
+	} else if (choiceType === "bot") {
 		isBotMode = true;
-		logInfo(`已选择 [Bot 身份] 登录并连接，正在连接 Telegram...`);
 		selectedSessionFile = path.join(SESSIONS_DIR, `bot_${BOT_TOKEN.split(":")[0]}.session`);
 		if (fs.existsSync(selectedSessionFile)) {
 			savedSession = fs.readFileSync(selectedSessionFile, "utf-8").trim();
 		}
 	} else {
-		// 使用已有的用户账号
-		const mapping = userSessionMapping.find(m => m.index === choice);
-		const file = mapping.file;
+		const file = identityAns.identity.file;
 		phoneNumber = file.replace(".session", "");
 		selectedSessionFile = path.join(SESSIONS_DIR, file);
 		savedSession = fs.readFileSync(selectedSessionFile, "utf-8").trim();
-		logInfo(`已选择用户账号: ${colors.bright}${phoneNumber}${colors.reset}，正在尝试自动登录并连接...`);
+	}
+
+	// 优化终端输出：清除身份选择产生的 TUI 提问，保持界面极其干净
+	clearPreviousLines(sessionFiles.length + (BOT_TOKEN ? 1 : 0) + 3);
+	if (isBotMode) {
+		logSuccess(`已选择身份: ${colors.bright}[Bot 机器人]${colors.reset}`);
+	} else {
+		logSuccess(`已选择身份: 用户账号 ${colors.bright}${phoneNumber}${colors.reset}`);
 	}
 
 	const stringSession = new StringSession(savedSession);
@@ -533,41 +532,55 @@ async function main() {
 				botAuthToken: BOT_TOKEN,
 				onError: (err) => logError(`Bot 登录异常: ${err.message}`)
 			});
-			logSuccess("🎉 Bot 身份登录成功！");
+			clearPreviousLines(1); // 擦除连接等过渡行
+			logSuccess("🎉 Bot 身份连接登录成功！");
 		} else {
 			await client.start({
 				phoneNumber: async () => phoneNumber,
-				password: async () => await rl.question(`${colors.bright}请输入你的两步验证密码 (若未开启请直接按回车):${colors.reset} `),
-				phoneCode: async () => await rl.question(`${colors.bright}请输入收到的 Telegram 登录验证码:${colors.reset} `),
+				password: async () => {
+					const ans = await prompts({
+						type: "password",
+						name: "pass",
+						message: "请输入你的两步验证密码 (若未开启请直接按回车):"
+					});
+					return ans.pass;
+				},
+				phoneCode: async () => {
+					const ans = await prompts({
+						type: "text",
+						name: "code",
+						message: "请输入收到的 Telegram 登录验证码:"
+					});
+					return ans.code;
+				},
 				onError: (err) => logError(`登录异常: ${err.message}`)
 			});
-			logSuccess(`🎉 账号 ${phoneNumber} 登录成功！`);
+			clearPreviousLines(1); // 清理过渡行
+			logSuccess(`🎉 用户账号 ${phoneNumber} 连接登录成功！`);
 		}
 		
 		// 保存 Session
 		const currentSession = client.session.save();
 		fs.writeFileSync(selectedSessionFile, currentSession, "utf-8");
-		logInfo(`凭证已安全保存到本地 .sessions 文件夹中。`);
 
-		// 获取并保存当前登录身份的用户/Bot 昵称，用于主菜单可读性展示
+		// 获取并保存当前登录身份的昵称，用于主菜单展示
 		try {
 			const me = await client.getMe();
 			const nameStr = me.className === "User" 
 				? `${me.firstName || ""} ${me.lastName || ""}`.trim() + (me.username ? ` (@${me.username})` : "")
 				: `${me.firstName || ""}`.trim() + (me.username ? ` (@${me.username})` : "");
 			fs.writeFileSync(selectedSessionFile.replace(".session", ".name"), nameStr, "utf-8");
-			logSuccess(`当前身份昵称: ${colors.bright}${nameStr}${colors.reset}\n`);
+			logSuccess(`当前连接昵称: ${colors.bright}${nameStr}${colors.reset}\n`);
 		} catch (meErr) {
 			logWarn(`无法拉取当前身份昵称: ${meErr.message}`);
 		}
 	} catch (loginError) {
 		logError(`登录/连接失败: ${loginError.message}`);
-		rl.close();
 		process.exit(1);
 	}
 
-	// 2.5 获取并加载所有可用的目标频道实体信息 (用于生成直观易读的选择菜单)
-	logInfo("正在拉取已配制目标频道的名称与状态以生成可读性选择菜单...");
+	// 2.5 获取并加载所有可用的目标频道实体信息
+	logInfo("正在拉取已配制目标频道的名称与状态以生成选择菜单...");
 	const resolvedDestinations = [];
 	for (const dest of DESTINATIONS) {
 		try {
@@ -583,89 +596,105 @@ async function main() {
 	}
 
 	if (resolvedDestinations.length === 0) {
-		logError("错误：配置文件中所配制的目标频道均无法访问，请检查 forward-config.json 的 destinations 配置！");
-		rl.close();
+		logError("错误：配置文件中所配制的目标频道均无法访问，请检查 forward-config.json！");
 		process.exit(1);
 	}
+
+	// 清理拉取过程产生的日志提示
+	clearPreviousLines(resolvedDestinations.length + 1);
 
 	let activeDestEntities = [];
 	if (resolvedDestinations.length === 1) {
 		activeDestEntities = [resolvedDestinations[0].entity];
-		logInfo(`已自动选择唯一配置的目标频道: ${colors.bright}${resolvedDestinations[0].title}${colors.reset} (${resolvedDestinations[0].address})\n`);
+		logSuccess(`目标频道: ${colors.bright}${resolvedDestinations[0].title}${colors.reset} (${resolvedDestinations[0].address})`);
 	} else {
-		console.log(`\n${colors.bright}可供选择的目标频道列表:${colors.reset}`);
-		resolvedDestinations.forEach((destObj, index) => {
-			console.log(`  ${colors.cyan}${index + 1}.${colors.reset} ${colors.bright}${destObj.title}${colors.reset} (${colors.gray}${destObj.address}${colors.reset})`);
+		// 生成 TUI 目标频道多选菜单
+		const destChoices = resolvedDestinations.map((destObj) => {
+			return { title: `${destObj.title} (${destObj.address})`, value: destObj, selected: true };
 		});
-		console.log(`  ${colors.cyan}${resolvedDestinations.length + 1}.${colors.reset} ${colors.green}[全部同时发送]${colors.reset}`);
+		destChoices.push({ title: `${colors.green}[全部同时发送]${colors.reset}`, value: "all" });
 
-		let chosenIndices = [];
-		while (chosenIndices.length === 0) {
-			const ans = await rl.question(`\n请选择本次要转发的目标频道序号 (支持多选，用逗号分隔，如 '1' 或 '1,3' 或 '${resolvedDestinations.length + 1}'): `);
-			const parts = ans.split(",").map(p => p.trim());
-			
-			for (const part of parts) {
-				const num = parseInt(part, 10);
-				if (!isNaN(num)) {
-					if (num === resolvedDestinations.length + 1) {
-						chosenIndices = resolvedDestinations.map((_, i) => i);
-						break;
-					} else if (num >= 1 && num <= resolvedDestinations.length) {
-						chosenIndices.push(num - 1);
-					}
-				}
-			}
-			
-			if (chosenIndices.length === 0) {
-				logWarn("无效的序号选择，请重新选择！");
-			}
+		const destAns = await prompts({
+			type: "multiselect",
+			name: "dests",
+			message: "请选择本次要转发的目标频道 (使用空格键勾选/取消，回车确认):",
+			choices: destChoices,
+			hint: "- 空格键勾选，回车确认"
+		});
+
+		if (!destAns.dests || destAns.dests.length === 0) {
+			logError("操作取消：未选择任何目标频道！");
+			process.exit(0);
 		}
-		
-		const uniqueIndices = [...new Set(chosenIndices)];
-		activeDestEntities = uniqueIndices.map(i => resolvedDestinations[i].entity);
-		const chosenTitles = uniqueIndices.map(i => resolvedDestinations[i].title);
-		logSuccess(`成功选择 ${colors.bright}${activeDestEntities.length}${colors.reset} 个目标频道: [${chosenTitles.join(", ")}]\n`);
+
+		let finalSelected = [];
+		if (destAns.dests.includes("all")) {
+			finalSelected = [...resolvedDestinations];
+		} else {
+			finalSelected = destAns.dests;
+		}
+
+		activeDestEntities = finalSelected.map(d => d.entity);
+		const chosenTitles = finalSelected.map(d => d.title);
+
+		// 清理选择菜单，使终端展示非常完美
+		clearPreviousLines(resolvedDestinations.length + 3);
+		logSuccess(`已选目标频道: [${colors.bright}${chosenTitles.join(", ")}${colors.reset}]`);
 	}
 
 	// 3. 获取并解析消息链接（起始 & 结束）
 	let parsed = null;
 	while (!parsed) {
-		const linkInput = await rl.question(`${colors.bright}请输入【起始】消息链接 (从它的下一条消息开始转发):${colors.reset}\n> `);
-		if (!linkInput.trim()) {
-			logWarn("输入不能为空，请重新输入。");
-			continue;
+		const startAns = await prompts({
+			type: "text",
+			name: "link",
+			message: "请输入【起始】消息链接 (从它的下一条消息开始转发):",
+			validate: val => !val.trim() ? "起始消息链接不能为空！" : true
+		});
+		
+		if (!startAns.link) {
+			logWarn("操作已取消。");
+			process.exit(0);
 		}
 
-		parsed = parseTelegramLink(linkInput);
+		parsed = parseTelegramLink(startAns.link);
 		if (!parsed) {
-			logError("无法解析该链接。请输入正确的 Telegram 消息链接。");
-			console.log(`支持的格式:
-  - 公开频道: https://t.me/channel_username/123
-  - Private channel: https://t.me/c/123456789/123\n`);
+			logError("无法解析该链接，请重新输入正确的 Telegram 消息链接！\n");
 		}
 	}
 
 	let endParsed = null;
 	while (true) {
-		const endLinkInput = await rl.question(`${colors.bright}请输入【结束】消息链接 (可选，留空代表一直转发到最新可用消息):${colors.reset}\n> `);
-		if (!endLinkInput.trim()) {
+		const endAns = await prompts({
+			type: "text",
+			name: "link",
+			message: "请输入【结束】消息链接 (可选，留空代表一直转发到最新可用消息):"
+		});
+
+		if (endAns.link === undefined) {
+			logWarn("操作已取消。");
+			process.exit(0);
+		}
+
+		const endLinkInput = endAns.link.trim();
+		if (!endLinkInput) {
 			break; // 用户留空，执行到最新消息
 		}
 
 		endParsed = parseTelegramLink(endLinkInput);
 		if (!endParsed) {
-			logError("无法解析该结束链接，请重新输入或直接按回车留空。");
+			logError("无法解析该结束链接，请重新输入或直接按回车留空。\n");
 			continue;
 		}
 
 		if (endParsed.chatId !== parsed.chatId) {
-			logError("错误：结束消息所在的频道与起始消息所在的频道不一致，请重新输入！");
+			logError("错误：结束消息所在的频道与起始消息所在的频道不一致，请重新输入！\n");
 			endParsed = null;
 			continue;
 		}
 
 		if (endParsed.messageId <= parsed.messageId) {
-			logError(`错误：结束消息 ID (${endParsed.messageId}) 必须大于起始消息 ID (${parsed.messageId})，请重新输入！`);
+			logError(`错误：结束消息 ID (${endParsed.messageId}) 必须大于起始消息 ID (${parsed.messageId})，请重新输入！\n`);
 			endParsed = null;
 			continue;
 		}
@@ -673,27 +702,19 @@ async function main() {
 		break;
 	}
 
-	logSuccess(`成功解析链接！`);
-	logInfo(`源频道/群组 ID: ${colors.bright}${parsed.chatId}${colors.reset}`);
-	logInfo(`起始消息 ID: ${colors.bright}${parsed.messageId}${colors.reset}`);
-	if (endParsed) {
-		logInfo(`设定结束消息 ID: ${colors.bright}${endParsed.messageId}${colors.reset}`);
-	} else {
-		logInfo(`未指定结束链接，将自动转发到频道最新一条消息。`);
-	}
+	// 擦除链接提问产生的交互行
+	clearPreviousLines(endParsed ? 4 : 3);
+	logSuccess(`成功解析区间: 起始消息 ID #${parsed.messageId}` + (endParsed ? ` => 结束消息 ID #${endParsed.messageId}` : " => 最新消息"));
 
 	// 4. 解析并验证源频道可见性与访问权限
-	logInfo("正在验证源频道的可见性与访问权限...");
 	let sourceEntity = null;
-	const destEntities = [...activeDestEntities]; // 目标实体在上一步已成功解析并过滤，这里直接复用即可！
+	const destEntities = [...activeDestEntities]; // 直接复用之前已验证的目标实体
 
 	try {
 		sourceEntity = await client.getEntity(parsed.chatId);
-		logSuccess(`成功定位源频道: ${colors.bright}${sourceEntity.title || sourceEntity.username || "私有群组"}${colors.reset}\n`);
 	} catch (err) {
 		logError(`无法访问源频道！错误: ${err.message}`);
 		logError("请确保你的个人账号已经加入/关注了该频道。");
-		rl.close();
 		process.exit(1);
 	}
 
@@ -703,13 +724,12 @@ async function main() {
 		const latestMessages = await client.getMessages(sourceEntity, { limit: 1 });
 		if (latestMessages && latestMessages.length > 0) {
 			latestId = latestMessages[0].id;
-			logInfo(`检测到源频道当前最新消息 ID 为: ${colors.bright}${latestId}${colors.reset}`);
 		}
 	} catch (err) {
-		logWarn(`无法获取频道最新消息 ID (${err.message})，将仅依赖空消息数量来自动判定任务终止。`);
+		// 获取最新 ID 报错静默，主要使用空消息判定退去即可
 	}
 
-	// 设定本次任务的物理终点 ID
+	// 设定终点
 	const targetEndId = endParsed ? endParsed.messageId : latestId;
 	const sourceTitle = sourceEntity.title || sourceEntity.username || parsed.chatId;
 	if (targetEndId) {
@@ -718,43 +738,187 @@ async function main() {
 		logInfo(`任务范围: 从频道 【${colors.bright}${sourceTitle}${colors.reset}】 的消息 #${colors.bright}${parsed.messageId + 1}${colors.reset} 转发至最新消息，连续空消息触发上限时自动停止。\n`);
 	}
 
-	// 6. 运行参数配置 (直接读取最头部已初始化默认值的 config 对象)
+	// 6. 运行参数与过滤规则配置 (读取自已加载了默认值的 config 对象)
 	let maxConsecutiveFailures = config.settings.maxConsecutiveFailures;
 	let delayMs = config.settings.delayMs;
-	const showSenderNames = config.settings.showSenderNames;
-	const dropAuthor = !showSenderNames;
+	let showSenderNames = config.settings.showSenderNames;
+	let jitterMin = config.settings.jitterRange[0];
+	let jitterMax = config.settings.jitterRange[1];
+	let commentsCfg = config.settings.comments || { enabled: false, mode: "media" };
 
-	const useDefault = await rl.question(`${colors.bright}是否使用配置文件中的运行设置？ (容忍连续 ${maxConsecutiveFailures} 条空消息, 发送间隔 ${delayMs}ms) [Y/n]:${colors.reset} `);
-	if (useDefault.trim().toLowerCase() === "n") {
-		const customMax = await rl.question(`请输入容忍连续空消息的最大数量 (默认: ${maxConsecutiveFailures}): `);
-		if (customMax.trim() && !isNaN(customMax)) {
-			maxConsecutiveFailures = parseInt(customMax, 10);
-		}
+	const useDefaultAns = await prompts({
+		type: "confirm",
+		name: "useDefault",
+		message: "是否使用配置文件中的所有默认运行与过滤设置？",
+		initial: true
+	});
 
-		const customDelay = await rl.question(`请输入每次发送的时间间隔毫秒数 (默认: ${delayMs}): `);
-		if (customDelay.trim() && !isNaN(customDelay)) {
-			delayMs = parseInt(customDelay, 10);
-		}
-	}
-
-	console.log("");
-	logInfo(`参数确认:`);
-	logInfo(`- 容忍连续空消息上限: ${colors.bright}${maxConsecutiveFailures}${colors.reset}`);
-	logInfo(`- 发送时间间隔: ${colors.bright}${delayMs}ms${colors.reset}`);
-	logInfo(`- 显示原消息来源: ${colors.bright}${showSenderNames ? "是 (显示“转发自 X”)" : "否 (隐藏原作者，以本人名义发布)"}${colors.reset}`);
-	const commentsCfg = config.settings.comments || {};
-	logInfo(`- 评论区转发: ${colors.bright}${commentsCfg.enabled ? `开启 (模式: ${commentsCfg.mode === "all" ? "全部转发" : "仅转发媒体"})` : "关闭"}${colors.reset}`);
-	console.log("");
-
-	const proceed = await rl.question(`${colors.bright}确认开始自动合并转发？ [Y/n]:${colors.reset} `);
-	if (proceed.trim().toLowerCase() === "n") {
+	if (useDefaultAns.useDefault === undefined) {
 		logWarn("操作已取消。");
-		rl.close();
 		process.exit(0);
 	}
 
-	rl.close();
+	if (!useDefaultAns.useDefault) {
+		// A. 通过多选菜单选择需要自定义的板块
+		const editSectionsAns = await prompts({
+			type: "multiselect",
+			name: "sections",
+			message: "请勾选你需要临时自定义修改的配置板块 (空格键勾选，回车确认):",
+			choices: [
+				{ title: "运行速率与参数 (延时、空数限制、显示作者等)", value: "settings" },
+				{ title: "文本正则过滤 (excludeRegex, includeRegex)", value: "text" },
+				{ title: "多媒体放行状态 (图片/视频/语音等的放行开关)", value: "media" }
+			],
+			hint: "- 空格键勾选，回车确认"
+		});
 
+		if (editSectionsAns.sections && editSectionsAns.sections.includes("settings")) {
+			const settingsAns = await prompts([
+				{
+					type: "number",
+					name: "maxFailures",
+					message: `请输入容忍连续空消息的最大数量 (当前: ${maxConsecutiveFailures}):`,
+					initial: maxConsecutiveFailures
+				},
+				{
+					type: "number",
+					name: "delay",
+					message: `请输入基础发送延时毫秒数 (当前: ${delayMs}):`,
+					initial: delayMs
+				},
+				{
+					type: "number",
+					name: "jMin",
+					message: `请输入随机抖动下限系数 (当前: ${jitterMin}):`,
+					initial: jitterMin,
+					float: true
+				},
+				{
+					type: "number",
+					name: "jMax",
+					message: `请输入随机抖动上限系数 (当前: ${jitterMax}):`,
+					initial: jitterMax,
+					float: true
+				},
+				{
+					type: "confirm",
+					name: "showSender",
+					message: "转发时是否在目标频道显示原消息来源 (如“转发自 X”)？",
+					initial: showSenderNames
+				},
+				{
+					type: "confirm",
+					name: "commentsOn",
+					message: "是否开启频道消息底下的评论区伴随转发功能？",
+					initial: commentsCfg.enabled
+				}
+			]);
+
+			maxConsecutiveFailures = settingsAns.maxFailures ?? maxConsecutiveFailures;
+			delayMs = settingsAns.delay ?? delayMs;
+			jitterMin = settingsAns.jMin ?? jitterMin;
+			jitterMax = settingsAns.jMax ?? jitterMax;
+			showSenderNames = settingsAns.showSender ?? showSenderNames;
+			
+			if (settingsAns.commentsOn !== undefined) {
+				commentsCfg.enabled = settingsAns.commentsOn;
+				if (commentsCfg.enabled) {
+					const modeAns = await prompts({
+						type: "select",
+						name: "mode",
+						message: "请选择评论区消息转发模式:",
+						choices: [
+							{ title: "全部转发", value: "all" },
+							{ title: "仅转发含多媒体的评论", value: "media" }
+						],
+						initial: commentsCfg.mode === "all" ? 0 : 1
+					});
+					commentsCfg.mode = modeAns.mode || commentsCfg.mode;
+				}
+			}
+		}
+
+		if (editSectionsAns.sections && editSectionsAns.sections.includes("text")) {
+			const textAns = await prompts([
+				{
+					type: "text",
+					name: "exc",
+					message: `请输入排除正则表达式 (当前: "${config.filters.text.excludeRegex}"):`,
+					initial: config.filters.text.excludeRegex
+				},
+				{
+					type: "text",
+					name: "inc",
+					message: `请输入包含正则表达式 (当前: "${config.filters.text.includeRegex}"):`,
+					initial: config.filters.text.includeRegex
+				}
+			]);
+
+			config.filters.text.excludeRegex = textAns.exc !== undefined ? textAns.exc.trim() : config.filters.text.excludeRegex;
+			config.filters.text.includeRegex = textAns.inc !== undefined ? textAns.inc.trim() : config.filters.text.includeRegex;
+		}
+
+		if (editSectionsAns.sections && editSectionsAns.sections.includes("media")) {
+			const mediaKeys = [
+				{ key: "allowTextOnly", label: "纯文本" },
+				{ key: "allowPhoto", label: "图片" },
+				{ key: "allowVideo", label: "视频" },
+				{ key: "allowDocument", label: "普通文档/文件" },
+				{ key: "allowSticker", label: "表情贴纸" },
+				{ key: "allowAnimation", label: "动图/GIF" },
+				{ key: "allowAudio", label: "音频/音乐" },
+				{ key: "allowVoice", label: "语音消息" }
+			];
+
+			console.log(`\n  ${colors.bright}多媒体类型过滤自定义状态修改:${colors.reset}`);
+			for (const item of mediaKeys) {
+				const currentVal = config.filters.mediaTypes[item.key];
+				const ans = await prompts({
+					type: "confirm",
+					name: "allow",
+					message: `是否允许转发 [${item.label}] 类型的消息？`,
+					initial: currentVal
+				});
+				if (ans.allow !== undefined) {
+					config.filters.mediaTypes[item.key] = ans.allow;
+				}
+			}
+		}
+	}
+
+	const dropAuthor = !showSenderNames;
+	config.settings.jitterRange = [jitterMin, jitterMax];
+	config.settings.comments = commentsCfg;
+
+	// 清除参数提问产生的控制台行，保持最美观
+	if (!useDefaultAns.useDefault) {
+		clearPreviousLines(5); // 清除大分类提问
+	} else {
+		clearPreviousLines(1);
+	}
+
+	console.log("");
+	logInfo(`最终运行参数确认:`);
+	logInfo(`- 容忍连续空消息上限: ${colors.bright}${maxConsecutiveFailures}${colors.reset}`);
+	logInfo(`- 发送时间间隔: ${colors.bright}${delayMs}ms${colors.reset}`);
+	logInfo(`- 随机时间抖动范围: ${colors.bright}[${config.settings.jitterRange.join(", ")}]${colors.reset}`);
+	logInfo(`- 显示原消息来源: ${colors.bright}${showSenderNames ? "是 (显示“转发自 X”)" : "否 (隐藏原作者，以本人名义发布)"}${colors.reset}`);
+	logInfo(`- 评论区伴随转发: ${colors.bright}${commentsCfg.enabled ? `开启 (模式: ${commentsCfg.mode === "all" ? "全部转发" : "仅转发媒体"})` : "关闭"}${colors.reset}`);
+	console.log("");
+
+	const startConfirm = await prompts({
+		type: "confirm",
+		name: "proceed",
+		message: "确认开始自动合并转发？",
+		initial: true
+	});
+
+	if (!startConfirm.proceed) {
+		logWarn("操作已取消。");
+		process.exit(0);
+	}
+
+	clearPreviousLines(8); // 完美清理确认提问
 	logSuccess("🚀 正在启动用户身份转发任务 (支持媒体组自动合并与消息过滤)... \n");
 
 	let currentId = parsed.messageId + 1;
@@ -846,6 +1010,7 @@ async function main() {
 					logSuccess(`[成组转发成功] 媒体组 [${validGroupedIds.join(", ")}] 转发成功！`);
 					successCount += validGroupedIds.length;
 
+					// 伴随转发评论区
 					const commentCount = await forwardComments(msg, sourceEntity, destEntities, dropAuthor, client);
 					if (commentCount > 0) {
 						successCount += commentCount;
@@ -876,6 +1041,7 @@ async function main() {
 					logSuccess(`[${msgTypeDesc}] 消息 #${currentId}${sneakPeek} 转发成功！`);
 					successCount++;
 
+					// 伴随转发评论区
 					const commentCount = await forwardComments(msg, sourceEntity, destEntities, dropAuthor, client);
 					if (commentCount > 0) {
 						successCount += commentCount;

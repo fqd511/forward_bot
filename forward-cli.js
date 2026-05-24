@@ -333,32 +333,18 @@ async function forwardComments(msg, sourceEntity, destEntities, dropAuthor, clie
 		return 0;
 	}
 
-	// 兼容 GramJS 驼峰和下划线的字段解析
-	const repliesPeerId = msg.replies?.repliesPeerId || msg.replies?.replies_peer_id;
-	const repliesId = msg.replies?.repliesId || msg.replies?.replies_id;
-
-	if (!msg.replies || !repliesPeerId || !repliesId) {
+	if (!msg.replies) {
 		return 0;
 	}
 
-	const threadRootMsgId = repliesId;
 	const mode = commentsConfig.mode || "all";
 
-	// 1. 定位讨论群实体
-	let discussionPeer;
-	try {
-		discussionPeer = await clientInstance.getEntity(repliesPeerId);
-	} catch (err) {
-		logWarn(`无法解析讨论群实体: ${err.message}，跳过评论区转发。`);
-		return 0;
-	}
-
-	// 2. 通过 messages.GetReplies 拉取评论区消息
+	// 1. 通过 messages.GetReplies 获取评论区消息（peer 用源频道）
 	let commentsResult;
 	try {
 		commentsResult = await clientInstance.invoke(new Api.messages.GetReplies({
-			peer: discussionPeer,
-			msgId: threadRootMsgId,
+			peer: sourceEntity,
+			msgId: msg.id,
 			offsetId: 0,
 			offsetDate: 0,
 			addOffset: 0,
@@ -372,30 +358,38 @@ async function forwardComments(msg, sourceEntity, destEntities, dropAuthor, clie
 		return 0;
 	}
 
-	// 3. 过滤掉讨论组根消息和空消息
-	let allComments = commentsResult.messages.filter(m =>
-		m.id !== threadRootMsgId && m.className !== "MessageEmpty"
+	// 2. 过滤掉根消息（channel post 本身）和空消息
+	let rawComments = commentsResult.messages.filter(m =>
+		m.id !== msg.id && m.className !== "MessageEmpty"
 	);
 
-	if (allComments.length === 0) {
+	if (rawComments.length === 0) {
+		return 0;
+	}
+
+	// 3. 从评论消息中提取讨论群 peer（用于后续转发）
+	let discussionPeer;
+	try {
+		discussionPeer = await clientInstance.getEntity(rawComments[0].peerId);
+	} catch (err) {
+		logWarn(`无法获取讨论群实体: ${err.message}，跳过评论区转发。`);
 		return 0;
 	}
 
 	// 4. 按 mode 过滤: "media" → 仅转发含媒体的评论
 	let commentsToForward;
 	if (mode === "media") {
-		commentsToForward = allComments.filter(m => {
-			// 使用最健壮的高阶 Getter 进行媒体类型判断
+		commentsToForward = rawComments.filter(m => {
 			if (m.photo || m.video || m.audio || m.voice) return true;
 			if (m.document) {
 				const mime = m.document.mimeType || "";
-				if (mime.includes("image/webp")) return false; // 过滤贴纸
+				if (mime.includes("image/webp")) return false;
 				return true;
 			}
 			return false;
 		});
 	} else {
-		commentsToForward = [...allComments];
+		commentsToForward = [...rawComments];
 	}
 
 	if (commentsToForward.length === 0) {
@@ -405,7 +399,39 @@ async function forwardComments(msg, sourceEntity, destEntities, dropAuthor, clie
 	const modeLabel = mode === "media" ? "仅媒体" : "全部";
 	logInfo(`正在转发 ${commentsToForward.length} 条评论区消息 (${modeLabel})...`);
 
-	for (const comment of commentsToForward) {
+	// 5. 将待转发的评论按 media group 分组，保持成组结构
+	const groupMap = new Map();
+	const singles = [];
+	for (const c of commentsToForward) {
+		if (c.groupedId) {
+			const gid = c.groupedId.toString();
+			if (!groupMap.has(gid)) groupMap.set(gid, []);
+			groupMap.get(gid).push(c);
+		} else {
+			singles.push(c);
+		}
+	}
+
+	// 转发 media group 评论
+	for (const [, group] of groupMap) {
+		group.sort((a, b) => a.id - b.id);
+		const ids = group.map(c => c.id);
+		for (const destEntity of destEntities) {
+			try {
+				await clientInstance.forwardMessages(destEntity, {
+					messages: ids,
+					fromPeer: discussionPeer,
+					dropAuthor: dropAuthor
+				});
+			} catch (err) {
+				logWarn(`转发评论组 #${ids.join(", #")} 失败: ${err.message}`);
+			}
+		}
+		await new Promise(resolve => setTimeout(resolve, 500));
+	}
+
+	// 转发非成组的单条评论
+	for (const comment of singles) {
 		for (const destEntity of destEntities) {
 			try {
 				await clientInstance.forwardMessages(destEntity, {

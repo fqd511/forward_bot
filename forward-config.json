@@ -49,7 +49,7 @@
     "jitterRange": [0.95, 1.45],
     "showSenderNames": true,
     "comments": {
-      "enabled": false,
+      "enabled": true,
       "mode": "media"
     }
   }

@@ -41,7 +41,7 @@
 
   "settings": {
     "destinations": [],
-    "maxConsecutiveFailures": 30,
+    "maxConsecutiveFailures": 200,
     "delayMs": 1500,
     "jitterRange": [0.95, 1.45],
     "showSenderNames": true

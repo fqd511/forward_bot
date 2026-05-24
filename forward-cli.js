@@ -323,50 +323,91 @@ async function main() {
 	}
 
 	const sessionFiles = fs.readdirSync(SESSIONS_DIR).filter(file => file.endsWith(".session"));
+	const BOT_TOKEN = process.env.BOT_TOKEN;
 	
 	let selectedSessionFile = "";
 	let savedSession = "";
 	let phoneNumber = "";
+	let isBotMode = false;
 
+	console.log(`\n${colors.bright}可供选择的执行身份列表:${colors.reset}`);
+	
+	let menuIndex = 1;
+	const userSessionMapping = [];
+
+	// A. 列出已有用户账号 (同时支持读取保存的名字)
 	if (sessionFiles.length > 0) {
-		console.log(`\n${colors.bright}本地已保存账号列表:${colors.reset}`);
-		sessionFiles.forEach((file, index) => {
+		sessionFiles.forEach((file) => {
 			const accName = file.replace(".session", "");
-			console.log(`  ${colors.cyan}${index + 1}.${colors.reset} ${accName}`);
+			let displayName = accName;
+			
+			const nameFilePath = path.join(SESSIONS_DIR, file.replace(".session", ".name"));
+			if (fs.existsSync(nameFilePath)) {
+				const savedName = fs.readFileSync(nameFilePath, "utf-8").trim();
+				displayName = `${colors.bright}${savedName}${colors.reset} (手机: ${accName})`;
+			} else {
+				displayName = `${colors.bright}${accName}${colors.reset}`;
+			}
+
+			console.log(`  ${colors.cyan}${menuIndex}.${colors.reset} 用户账号: ${displayName}`);
+			userSessionMapping.push({ index: menuIndex, file: file });
+			menuIndex++;
 		});
-		console.log(`  ${colors.cyan}${sessionFiles.length + 1}.${colors.reset} ${colors.green}[+] 登录全新账号${colors.reset}`);
+	}
 
-		let choice = -1;
-		while (choice < 1 || choice > sessionFiles.length + 1) {
-			const ans = await rl.question(`\n请选择登录账号序号 (1 - ${sessionFiles.length + 1}): `);
-			const parsedChoice = parseInt(ans.trim(), 10);
-			if (!isNaN(parsedChoice)) {
-				choice = parsedChoice;
-			}
-		}
-
-		if (choice === sessionFiles.length + 1) {
-			// 登录新账号
-			while (!phoneNumber) {
-				const numInput = await rl.question(`\n${colors.bright}请输入你要登录的手机号 (带国家码，如 +86138xxxxxxxx):${colors.reset} `);
-				phoneNumber = numInput.trim();
-			}
-			selectedSessionFile = path.join(SESSIONS_DIR, `${phoneNumber}.session`);
+	// B. 列出 Bot 身份选项 (若 .env 中配置了 BOT_TOKEN)
+	const botOptionIndex = menuIndex;
+	if (BOT_TOKEN) {
+		const botId = BOT_TOKEN.split(":")[0];
+		const botNameFilePath = path.join(SESSIONS_DIR, `bot_${botId}.name`);
+		let botDisplayName = "使用 env 中的 BOT_TOKEN 进行转发";
+		if (fs.existsSync(botNameFilePath)) {
+			const savedBotName = fs.readFileSync(botNameFilePath, "utf-8").trim();
+			botDisplayName = `${colors.bright}${savedBotName}${colors.reset} (Bot 令牌: ${botId})`;
 		} else {
-			// 使用已有账号
-			const file = sessionFiles[choice - 1];
-			phoneNumber = file.replace(".session", "");
-			selectedSessionFile = path.join(SESSIONS_DIR, file);
-			savedSession = fs.readFileSync(selectedSessionFile, "utf-8").trim();
-			logInfo(`已选择账号: ${colors.bright}${phoneNumber}${colors.reset}，正在尝试自动登录并连接...`);
+			botDisplayName = `Bot 账号 (令牌 ID: ${botId})`;
 		}
-	} else {
-		logWarn("本地未检测到任何已登录账号，准备开始全新登录流程。");
+
+		console.log(`  ${colors.cyan}${botOptionIndex}.${colors.reset} ${colors.yellow}[Bot 身份] ${botDisplayName}${colors.reset}`);
+		menuIndex++;
+	}
+
+	// C. 新用户登录选项
+	const newUserOptionIndex = menuIndex;
+	console.log(`  ${colors.cyan}${newUserOptionIndex}.${colors.reset} ${colors.green}[+] 登录全新用户账号${colors.reset}`);
+
+	let choice = -1;
+	while (choice < 1 || choice > menuIndex) {
+		const ans = await rl.question(`\n请选择登录账号序号 (1 - ${menuIndex}): `);
+		const parsedChoice = parseInt(ans.trim(), 10);
+		if (!isNaN(parsedChoice)) {
+			choice = parsedChoice;
+		}
+	}
+
+	if (choice === newUserOptionIndex) {
+		// 登录新账号
 		while (!phoneNumber) {
 			const numInput = await rl.question(`\n${colors.bright}请输入你要登录的手机号 (带国家码，如 +86138xxxxxxxx):${colors.reset} `);
 			phoneNumber = numInput.trim();
 		}
 		selectedSessionFile = path.join(SESSIONS_DIR, `${phoneNumber}.session`);
+	} else if (BOT_TOKEN && choice === botOptionIndex) {
+		// 以 Bot 身份登录并执行
+		isBotMode = true;
+		logInfo(`已选择 [Bot 身份] 登录并连接，正在连接 Telegram...`);
+		selectedSessionFile = path.join(SESSIONS_DIR, `bot_${BOT_TOKEN.split(":")[0]}.session`);
+		if (fs.existsSync(selectedSessionFile)) {
+			savedSession = fs.readFileSync(selectedSessionFile, "utf-8").trim();
+		}
+	} else {
+		// 使用已有的用户账号
+		const mapping = userSessionMapping.find(m => m.index === choice);
+		const file = mapping.file;
+		phoneNumber = file.replace(".session", "");
+		selectedSessionFile = path.join(SESSIONS_DIR, file);
+		savedSession = fs.readFileSync(selectedSessionFile, "utf-8").trim();
+		logInfo(`已选择用户账号: ${colors.bright}${phoneNumber}${colors.reset}，正在尝试自动登录并连接...`);
 	}
 
 	const stringSession = new StringSession(savedSession);
@@ -378,19 +419,38 @@ async function main() {
 
 	// 2. 登录认证
 	try {
-		await client.start({
-			phoneNumber: async () => phoneNumber,
-			password: async () => await rl.question(`${colors.bright}请输入你的两步验证密码 (若未开启请直接按回车):${colors.reset} `),
-			phoneCode: async () => await rl.question(`${colors.bright}请输入收到的 Telegram 登录验证码:${colors.reset} `),
-			onError: (err) => logError(`登录异常: ${err.message}`)
-		});
-
-		logSuccess(`🎉 账号 ${phoneNumber} 登录成功！`);
+		if (isBotMode) {
+			await client.start({
+				botAuthToken: BOT_TOKEN,
+				onError: (err) => logError(`Bot 登录异常: ${err.message}`)
+			});
+			logSuccess("🎉 Bot 身份登录成功！");
+		} else {
+			await client.start({
+				phoneNumber: async () => phoneNumber,
+				password: async () => await rl.question(`${colors.bright}请输入你的两步验证密码 (若未开启请直接按回车):${colors.reset} `),
+				phoneCode: async () => await rl.question(`${colors.bright}请输入收到的 Telegram 登录验证码:${colors.reset} `),
+				onError: (err) => logError(`登录异常: ${err.message}`)
+			});
+			logSuccess(`🎉 账号 ${phoneNumber} 登录成功！`);
+		}
 		
 		// 保存 Session
 		const currentSession = client.session.save();
 		fs.writeFileSync(selectedSessionFile, currentSession, "utf-8");
-		logInfo(`凭证已安全保存到本地 .sessions 文件夹中。\n`);
+		logInfo(`凭证已安全保存到本地 .sessions 文件夹中。`);
+
+		// 获取并保存当前登录身份的用户/Bot 昵称，用于主菜单可读性展示
+		try {
+			const me = await client.getMe();
+			const nameStr = me.className === "User" 
+				? `${me.firstName || ""} ${me.lastName || ""}`.trim() + (me.username ? ` (@${me.username})` : "")
+				: `${me.firstName || ""}`.trim() + (me.username ? ` (@${me.username})` : "");
+			fs.writeFileSync(selectedSessionFile.replace(".session", ".name"), nameStr, "utf-8");
+			logSuccess(`当前身份昵称: ${colors.bright}${nameStr}${colors.reset}\n`);
+		} catch (meErr) {
+			logWarn(`无法拉取当前身份昵称: ${meErr.message}`);
+		}
 	} catch (loginError) {
 		logError(`登录/连接失败: ${loginError.message}`);
 		rl.close();

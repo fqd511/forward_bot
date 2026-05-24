@@ -21,6 +21,9 @@
   "__comment_20": "   - showSenderNames: 转发消息时是否显示原消息的来源（如“转发自 X”）。设置为 true 则显示来源；设置为 false 则隐藏来源，接收方看到的消息就像由你本人/本Bot发送的一样。",
   "__comment_21": "   - jitterRange: 随机时间抖动的范围系数 [最小值, 最大值]。如 [0.85, 1.35] 表示实际延时会在基础 delayMs 的 85% ~ 135% 之间随机摆动，使行为更加真人化。",
   "__comment_22": "   - destinations: 目标转发频道/群组的用户名或 ID 列表（支持多个目标，用数组形式配制）。",
+  "__comment_23": "5. 【评论区转发】说明 (需源频道有关联讨论群)：",
+  "__comment_24": "   - comments.enabled: 设为 true 表示开启评论区消息转发功能",
+  "__comment_25": "   - comments.mode: \"all\" 转发全部评论，\"media\" 仅转发含图片/视频/文件的评论",
 
   "filters": {
     "text": {
@@ -44,6 +47,10 @@
     "maxConsecutiveFailures": 200,
     "delayMs": 1500,
     "jitterRange": [0.95, 1.45],
-    "showSenderNames": true
+    "showSenderNames": true,
+    "comments": {
+      "enabled": false,
+      "mode": "media"
+    }
   }
 }

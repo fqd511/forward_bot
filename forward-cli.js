@@ -56,7 +56,11 @@ let config = {
 		maxConsecutiveFailures: 30,
 		delayMs: 1500,
 		showSenderNames: true,
-		jitterRange: [0.95, 1.45]
+		jitterRange: [0.95, 1.45],
+		comments: {
+			enabled: false,
+			mode: "media"
+		}
 	}
 };
 
@@ -67,6 +71,9 @@ if (fs.existsSync(CONFIG_FILE)) {
 		config.filters.text = { ...config.filters.text, ...parsedConfig.filters?.text };
 		config.filters.mediaTypes = { ...config.filters.mediaTypes, ...parsedConfig.filters?.mediaTypes };
 		config.settings = { ...config.settings, ...parsedConfig.settings };
+		if (parsedConfig.settings?.comments) {
+			config.settings.comments = { ...config.settings.comments, ...parsedConfig.settings.comments };
+		}
 		logInfo("成功加载本地配置文件 forward-config.json");
 	} catch (err) {
 		logError(`解析 forward-config.json 配置文件失败: ${err.message}，将使用内置默认配置。`);
@@ -304,6 +311,108 @@ function shouldForwardMessage(msg) {
 	}
 
 	return { shouldForward: true };
+}
+
+/**
+ * 获取并转发指定频道消息关联的评论区消息（需源频道有关联讨论群）
+ * @returns {Promise<number>} 成功转发的评论数量
+ */
+async function forwardComments(msg, sourceEntity, destEntities, dropAuthor, clientInstance) {
+	const commentsConfig = config.settings?.comments ?? {};
+	if (!commentsConfig.enabled) {
+		return 0;
+	}
+
+	if (!msg.replies || !msg.replies.replies_peer_id || !msg.replies.replies_id) {
+		return 0;
+	}
+
+	const threadRootMsgId = msg.replies.replies_id;
+	const mode = commentsConfig.mode || "all";
+
+	// 1. 定位讨论群实体
+	let discussionPeer;
+	try {
+		discussionPeer = await clientInstance.getEntity(msg.replies.replies_peer_id);
+	} catch (err) {
+		logWarn(`无法解析讨论群实体: ${err.message}，跳过评论区转发。`);
+		return 0;
+	}
+
+	// 2. 通过 messages.GetReplies 拉取评论区消息
+	let commentsResult;
+	try {
+		commentsResult = await clientInstance.invoke(new Api.messages.GetReplies({
+			peer: discussionPeer,
+			msgId: threadRootMsgId,
+			offsetId: 0,
+			offsetDate: 0,
+			addOffset: 0,
+			limit: 100,
+			maxId: 0,
+			minId: 0,
+			hash: 0n
+		}));
+	} catch (err) {
+		logWarn(`获取评论区消息失败: ${err.message}，跳过评论区转发。`);
+		return 0;
+	}
+
+	// 3. 过滤掉讨论组根消息和空消息
+	let allComments = commentsResult.messages.filter(m =>
+		m.id !== threadRootMsgId && m.className !== "MessageEmpty"
+	);
+
+	if (allComments.length === 0) {
+		return 0;
+	}
+
+	// 4. 按 mode 过滤: "media" → 仅转发含媒体(图片/视频/文件)的评论
+	let commentsToForward;
+	if (mode === "media") {
+		commentsToForward = allComments.filter(m => {
+			if (!m.media) return false;
+			const cn = m.media.className;
+			if (cn === "MessageMediaWebPage") return false;
+			if (cn === "MessageMediaUnsupported") return false;
+			if (cn === "MessageMediaPhoto") return true;
+			if (cn === "MessageMediaDocument") {
+				const mime = m.media.document?.mimeType || "";
+				if (mime.includes("image/webp")) return false;
+				if (mime.includes("image/gif")) return false;
+				if (mime.includes("audio/")) return false;
+				return true;
+			}
+			return false;
+		});
+	} else {
+		commentsToForward = [...allComments];
+	}
+
+	if (commentsToForward.length === 0) {
+		return 0;
+	}
+
+	const modeLabel = mode === "media" ? "仅媒体" : "全部";
+	logInfo(`正在转发 ${commentsToForward.length} 条评论区消息 (${modeLabel})...`);
+
+	for (const comment of commentsToForward) {
+		for (const destEntity of destEntities) {
+			try {
+				await clientInstance.forwardMessages(destEntity, {
+					messages: [comment.id],
+					fromPeer: discussionPeer,
+					dropAuthor: dropAuthor
+				});
+			} catch (err) {
+				logWarn(`转发评论 #${comment.id} 失败: ${err.message}`);
+			}
+		}
+		await new Promise(resolve => setTimeout(resolve, 500));
+	}
+
+	logSuccess(`成功附带转发 ${commentsToForward.length} 条评论区消息 ✓`);
+	return commentsToForward.length;
 }
 
 async function main() {
@@ -633,6 +742,8 @@ async function main() {
 	logInfo(`- 容忍连续空消息上限: ${colors.bright}${maxConsecutiveFailures}${colors.reset}`);
 	logInfo(`- 发送时间间隔: ${colors.bright}${delayMs}ms${colors.reset}`);
 	logInfo(`- 显示原消息来源: ${colors.bright}${showSenderNames ? "是 (显示“转发自 X”)" : "否 (隐藏原作者，以本人名义发布)"}${colors.reset}`);
+	const commentsCfg = config.settings.comments || {};
+	logInfo(`- 评论区转发: ${colors.bright}${commentsCfg.enabled ? `开启 (模式: ${commentsCfg.mode === "all" ? "全部转发" : "仅转发媒体"})` : "关闭"}${colors.reset}`);
 	console.log("");
 
 	const proceed = await rl.question(`${colors.bright}确认开始自动合并转发？ [Y/n]:${colors.reset} `);
@@ -734,6 +845,11 @@ async function main() {
 					}
 					logSuccess(`[成组转发成功] 媒体组 [${validGroupedIds.join(", ")}] 转发成功！`);
 					successCount += validGroupedIds.length;
+
+					const commentCount = await forwardComments(msg, sourceEntity, destEntities, dropAuthor, client);
+					if (commentCount > 0) {
+						successCount += commentCount;
+					}
 				} else {
 					logWarn(`[过滤跳过] 媒体组 [${groupedMessageIds.join(", ")}] 里的所有子消息均未通过过滤条件。`);
 				}
@@ -759,6 +875,11 @@ async function main() {
 					const msgTypeDesc = getMessageTypeDescription(msg);
 					logSuccess(`[${msgTypeDesc}] 消息 #${currentId}${sneakPeek} 转发成功！`);
 					successCount++;
+
+					const commentCount = await forwardComments(msg, sourceEntity, destEntities, dropAuthor, client);
+					if (commentCount > 0) {
+						successCount += commentCount;
+					}
 				}
 				currentId++;
 			}

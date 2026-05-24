@@ -926,10 +926,21 @@ async function main() {
 	let successCount = 0;
 
 	let isRunning = true;
+	let sigintCount = 0;
 	process.on("SIGINT", () => {
+		sigintCount++;
+		if (sigintCount >= 2) {
+			console.log("\n");
+			logWarn("检测到连续终止信号，立即强制退出...");
+			process.exit(0);
+		}
 		console.log("\n");
 		logWarn("收到终止信号 (Ctrl+C)，正在安全退出...");
 		isRunning = false;
+		setTimeout(() => {
+			logWarn("等待超时，强制退出...");
+			process.exit(0);
+		}, 5000);
 	});
 
 	while (isRunning) {

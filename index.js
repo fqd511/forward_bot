@@ -563,7 +563,9 @@ app.post("/api/preview", async (req, res) => {
 				} else if (isDocument && msg.media.document) {
 					const doc = msg.media.document;
 					if (doc.thumbs && doc.thumbs.length > 0) {
-						const buffer = await client.downloadMedia(msg, { thumb: 0, workers: 1 });
+						// Download the largest thumbnail size which is usually the last one
+						const largestThumbIdx = doc.thumbs.length - 1;
+						const buffer = await client.downloadMedia(msg, { thumb: largestThumbIdx, workers: 1 });
 						if (buffer) {
 							mediaBase64 = `data:image/jpeg;base64,${buffer.toString("base64")}`;
 						}

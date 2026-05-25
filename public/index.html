@@ -519,7 +519,7 @@
 								
 								<!-- Render base64 media thumbnail if available -->
 								<div v-if="tab.previewData.mediaBase64" class="flex justify-center bg-slate-100/60 p-2.5 rounded-xl border border-slate-200/40 shadow-inner">
-									<img :src="tab.previewData.mediaBase64" class="max-w-xs max-h-48 rounded-xl object-contain shadow-sm border border-slate-200" alt="Telegram 预览媒体">
+									<img :src="tab.previewData.mediaBase64" class="max-w-md max-h-80 rounded-xl object-contain shadow-sm border border-slate-200" alt="Telegram 预览媒体">
 								</div>
 
 								<!-- Media type rich indicators (video no play, file no download) -->
@@ -1142,7 +1142,7 @@
 							
 							<!-- Render base64 media thumbnail if available -->
 							<div v-if="previewData.mediaBase64" class="flex justify-center bg-slate-100 p-2.5 rounded-xl border border-slate-200/60 shadow-inner">
-								<img :src="previewData.mediaBase64" class="max-w-xs max-h-48 rounded-xl object-contain shadow-sm border border-slate-200" alt="Telegram 预览媒体">
+								<img :src="previewData.mediaBase64" class="max-w-lg max-h-[400px] rounded-xl object-contain shadow-sm border border-slate-200" alt="Telegram 预览媒体">
 							</div>
 
 							<div class="bg-white border border-slate-150 rounded-xl p-3 text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">

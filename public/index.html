@@ -1,0 +1,2303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Telegram 转发机器人 - Web 终端</title>
+	<!-- Tailwind CSS -->
+	<script src="https://cdn.tailwindcss.com"></script>
+	<!-- Google Fonts (Inter & Fira Code) -->
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+	<style>
+		body {
+			font-family: 'Inter', system-ui, -apple-system, sans-serif;
+		}
+		.terminal-font {
+			font-family: 'Fira Code', monospace;
+		}
+		/* Custom scrollbar for terminal */
+		.terminal-scroll::-webkit-scrollbar {
+			width: 8px;
+			height: 8px;
+		}
+		.terminal-scroll::-webkit-scrollbar-track {
+			background: #1e293b;
+		}
+		.terminal-scroll::-webkit-scrollbar-thumb {
+			background: #475569;
+			border-radius: 4px;
+		}
+		.terminal-scroll::-webkit-scrollbar-thumb:hover {
+			background: #64748b;
+		}
+	</style>
+	<script>
+		tailwind.config = {
+			darkMode: 'class',
+			theme: {
+				extend: {
+					colors: {
+						brand: {
+							50: '#f0f9ff',
+							100: '#e0f2fe',
+							500: '#0284c7',
+							600: '#0369a1',
+							700: '#075985',
+						}
+					}
+				}
+			}
+		}
+	</script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+	<div id="app" v-cloak class="flex flex-col flex-grow">
+		
+		<!-- HEADER -->
+		<header class="bg-slate-900 text-white shadow-md sticky top-0 z-40">
+			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+				<div class="flex items-center justify-between h-16">
+					
+					<!-- Logo -->
+					<div class="flex items-center space-x-3">
+						<div class="bg-sky-500 p-2 rounded-lg text-white">
+							<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+							</svg>
+						</div>
+						<div>
+							<h1 class="text-lg font-bold tracking-tight py-1">Telegram Forwarder</h1>
+						</div>
+					</div>
+					
+					<!-- Header actions -->
+					<div class="flex items-center space-x-2 md:space-x-3">
+						<button @click="openSessionModal" title="查看和管理登录会话账号，以及在共享池中录入/验证复用目标目的地频道与群组" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3 py-2 rounded-lg text-sm transition font-medium active:scale-95 transform">
+							<svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+							</svg>
+							<span>会话与目的地 <span class="bg-slate-700 text-slate-300 text-xs px-1.5 py-0.5 rounded-full ml-1">{{ sessions.length }}</span></span>
+						</button>
+						
+						<button @click="openConfigModal" title="编辑和保存全局公共配置。新建任何转发进程标签页时，都会自动继承此处的速度和拦截放行配置" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3 py-2 rounded-lg text-sm transition font-medium active:scale-95 transform">
+							<svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+							</svg>
+							<span>公共配置</span>
+						</button>
+						
+						<button @click="openBackupModal" title="备份您的全部会话凭证、已验证目的地和多标签配置为JSON纯文本并自动复制，也可以粘贴备份在这里一键还原" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3 py-2 rounded-lg text-sm transition font-medium active:scale-95 transform">
+							<svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+							</svg>
+							<span>导入导出</span>
+						</button>
+					</div>
+				</div>
+			</div>
+		</header>
+
+		<!-- TAB BAR -->
+		<section class="bg-white border-b border-slate-200 sticky top-16 z-30 shadow-sm">
+			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between overflow-x-auto py-2">
+				<div class="flex items-center space-x-2">
+					<div 
+						v-for="(tab, idx) in tabs" 
+						:key="tab.id"
+						@click="activeTabId = tab.id"
+						class="flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer transition select-none font-medium text-sm whitespace-nowrap shrink-0"
+						:class="activeTabId === tab.id ? 'bg-sky-500 text-white shadow-sm' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'"
+					>
+						<!-- Status indicator -->
+						<span class="w-2 h-2 rounded-full" :class="{
+							'bg-slate-400': tab.status === 'idle',
+							'bg-emerald-500 animate-pulse': tab.status === 'running',
+							'bg-amber-500': tab.status === 'paused',
+							'bg-red-500': tab.status === 'error',
+							'bg-blue-500': tab.status === 'completed'
+						}"></span>
+						
+						<span>{{ { idle: '⏱️', running: '🚀', paused: '⏸️', error: '⚠️', completed: '✅' }[tab.status] || '⏱️' }} {{ tab.name || '未命名进程' }}</span>
+						
+						<button @click.stop="closeTab(tab.id)" class="hover:text-red-200 p-0.5 rounded transition">
+							<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</div>
+					
+					<!-- New Tab Trigger -->
+					<button @click="openAddTabModal" class="flex items-center space-x-1 bg-slate-100 hover:bg-sky-500 hover:text-white text-slate-500 px-3 py-2 rounded-lg text-sm transition font-medium whitespace-nowrap shrink-0">
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+						</svg>
+						<span>新进程</span>
+					</button>
+				</div>
+				
+				<!-- Quick Info -->
+				<div class="hidden md:flex items-center text-xs text-slate-500 space-x-2">
+					<span>服务器状态: <strong class="text-emerald-600 font-semibold">在线 ✓</strong></span>
+				</div>
+			</div>
+		</section>
+
+		<!-- MAIN CONTENT CONTAINER -->
+		<main class="flex-grow flex flex-col max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+			
+			<!-- EMPTY STATE -->
+			<div v-if="tabs.length === 0" class="flex-grow flex flex-col items-center justify-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-200 shadow-sm p-8 text-center">
+				<div class="bg-sky-50 text-sky-500 p-4 rounded-full mb-4">
+					<svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20" />
+					</svg>
+				</div>
+				<h3 class="text-lg font-bold text-slate-800 mb-1">暂无正在运行的转发进程</h3>
+				<p class="text-sm text-slate-500 max-w-md mb-6">每一个“标签页”表示一个独立的进程。添加一个进程，以单独配置它的源频道、目标频道、速率和过滤机制。</p>
+				<button @click="openAddTabModal" class="bg-sky-500 hover:bg-sky-600 text-white px-5 py-2.5 rounded-xl font-medium shadow-sm hover:shadow-md transition">
+					创建第一个转发进程
+				</button>
+			</div>
+
+			<!-- TAB DASHBOARD PANEL (UPPER/LOWER SPLIT) -->
+			<div v-else v-for="tab in (currentTab ? [currentTab] : [])" :key="tab.id" class="flex-grow flex flex-col space-y-6">
+				
+				<!-- UPPER SECTION: Config Panel -->
+				<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+					<div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
+						<h4 class="text-base font-bold text-slate-800 flex items-center space-x-2">
+							<span class="w-2.5 h-2.5 rounded-full" :class="{
+								'bg-slate-400': tab.status === 'idle',
+								'bg-emerald-500 animate-pulse': tab.status === 'running',
+								'bg-amber-500': tab.status === 'paused',
+								'bg-red-500': tab.status === 'error',
+								'bg-blue-500': tab.status === 'completed'
+							}"></span>
+							<span>进程配置 ({{ tab.name }})</span>
+						</h4>
+						
+						<!-- Tab specific reset or status label -->
+						<div class="flex items-center space-x-2">
+							<span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">
+								状态: {{ tabStatusLabel(tab.status) }}
+							</span>
+							<button @click="resetTabConfigToDefault(tab)" class="text-xs text-sky-500 hover:text-sky-600 hover:underline">
+								重置为公共默认配置
+							</button>
+						</div>
+					</div>
+
+					<!-- Settings Grid -->
+					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+						
+						<!-- Group 1: Connection & Accounts -->
+						<div class="space-y-4">
+							<h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider">连接与账户</h5>
+							
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">选择登录账号/Bot *</label>
+								<select v-model="tab.selectedSessionId" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+									<option value="">-- 选择可用身份 --</option>
+									<option v-for="s in sessions" :key="s.id" :value="s.id">
+										{{ s.name }} ({{ s.type === 'bot' ? 'Bot' : '用户' }})
+									</option>
+								</select>
+							</div>
+
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">源频道/群组 (Source) *</label>
+								<input type="text" v-model="tab.sourceChat" placeholder="例如: @source_channel 或 ID" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+							</div>
+							
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">目标转发目的地 (Destination)</label>
+								<div class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium flex items-center justify-between shadow-sm select-all">
+									<span class="text-slate-800 truncate font-semibold">🎯 {{ tab.name || '正在加载名称...' }}</span>
+									<span class="text-slate-400 text-xs font-mono shrink-0 ml-2" title="双击选中复制">{{ tab.destination }}</span>
+								</div>
+								<p class="text-[11px] text-slate-400 mt-0.5">如需更换目的地，请开辟新的进程标签</p>
+							</div>
+						</div>
+
+						<!-- Group 2: Range & Progress -->
+						<div class="space-y-4">
+							<h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider">范围与进度</h5>
+							
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">起始消息链接 *</label>
+								<input type="text" v-model="tab.startLink" placeholder="https://t.me/c/xxxx/123" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+							</div>
+
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">结束消息链接 (可选)</label>
+								<input type="text" v-model="tab.endLink" placeholder="留空代表一直到最新消息" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+							</div>
+
+							<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+								<div>
+									<span class="block text-xs text-slate-500">当前进度消息 ID</span>
+									<span class="text-lg font-bold text-slate-800 font-mono">#{{ tab.currentId || '未初始化' }}</span>
+								</div>
+								<div class="flex flex-col space-y-1">
+									<button @click="resetTabProgress(tab)" class="text-xs bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-2 py-1 rounded transition">
+										同步起始 ID
+									</button>
+									<button @click="manualSetProgress(tab)" class="text-xs text-sky-500 hover:text-sky-600 hover:underline">
+										手动指定 ID
+									</button>
+								</div>
+							</div>
+						</div>
+
+						<!-- Group 3: Rate & Comments -->
+						<div class="space-y-4">
+							<h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider">速度、细节与伴随转发</h5>
+
+							<div class="grid grid-cols-2 gap-3">
+								<div>
+									<label class="block text-xs font-semibold text-slate-600 mb-1">延迟 (毫秒)</label>
+									<input type="number" v-model.number="tab.config.settings.delayMs" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+								</div>
+								<div>
+									<label class="block text-xs font-semibold text-slate-600 mb-1">最大连续空消息数</label>
+									<input type="number" v-model.number="tab.config.settings.maxConsecutiveFailures" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+								</div>
+							</div>
+
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">随机抖动系数范围 (极值)</label>
+								<div class="flex items-center space-x-2">
+									<input type="number" step="0.05" v-model.number="tab.config.settings.jitterRange[0]" class="w-full text-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
+									<span class="text-slate-400 text-xs">~</span>
+									<input type="number" step="0.05" v-model.number="tab.config.settings.jitterRange[1]" class="w-full text-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none">
+								</div>
+							</div>
+
+							<div class="space-y-2">
+								<div class="flex items-center justify-between">
+									<span class="text-xs font-semibold text-slate-600">显示原始消息来源 (显示作者)</span>
+									<input type="checkbox" v-model="tab.config.settings.showSenderNames" class="rounded border-slate-300 text-sky-500 focus:ring-sky-500 h-4 w-4">
+								</div>
+								
+								<div class="flex items-center justify-between pt-1 border-t border-slate-100">
+									<span class="text-xs font-semibold text-slate-600">伴随转发评论区 (需源频道支持)</span>
+									<input type="checkbox" v-model="tab.config.settings.comments.enabled" class="rounded border-slate-300 text-sky-500 focus:ring-sky-500 h-4 w-4">
+								</div>
+								
+								<div v-if="tab.config.settings.comments.enabled" class="flex items-center justify-between">
+									<span class="text-xs text-slate-500 ml-4">评论过滤模式</span>
+									<select v-model="tab.config.settings.comments.mode" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none">
+										<option value="all">全部转发</option>
+										<option value="media">仅转发多媒体评论</option>
+									</select>
+								</div>
+							</div>
+						</div>
+
+					</div>
+
+					<!-- Filters and Regex (Collapsible section) -->
+					<div class="mt-6 border-t border-slate-100 pt-6">
+						<div class="flex items-center justify-between cursor-pointer" @click="tab.showAdvanced = !tab.showAdvanced">
+							<h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+								<svg class="w-4 h-4 text-slate-400 transition transform" :class="{ 'rotate-90': tab.showAdvanced }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+								</svg>
+								<span>高级过滤与放行配置 (正则文本、多媒体拦截)</span>
+							</h5>
+							<span class="text-xs text-sky-500 font-medium hover:underline">
+								{{ tab.showAdvanced ? '折叠' : '展开' }}
+							</span>
+						</div>
+
+						<div v-show="tab.showAdvanced" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
+							
+							<!-- Regex Exclude -->
+							<div class="space-y-3 bg-slate-50 border border-slate-150 p-4 rounded-xl">
+								<div class="flex items-center justify-between">
+									<span class="text-xs font-bold text-slate-600 flex items-center space-x-1">
+										<span class="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+										<span>排除正则表达式 (黑名单)</span>
+									</span>
+									<div class="flex items-center space-x-1.5">
+										<!-- Save to Default -->
+										<button @click="syncRegexToCommon(tab, 'excludeRegex')" title="将当前排除配置同步为系统默认，后续新建进程将自动继承" class="text-[10px] text-sky-500 font-semibold hover:underline">设为默认</button>
+										<span class="text-slate-300 text-[10px]">|</span>
+										<!-- History -->
+										<div class="relative inline-block text-left">
+											<button @click="toggleHistoryDropdown(tab, 'exclude')" class="text-slate-400 hover:text-slate-600" title="常用历史">
+												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+												</svg>
+											</button>
+											<div v-if="tab.activeDropdown === 'exclude'" class="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 z-10 py-1 max-h-48 overflow-y-auto">
+												<a v-for="h in regexHistory" :key="h" @click="applyRegex(tab, 'excludeRegex', h)" class="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 cursor-pointer truncate">{{ h }}</a>
+												<span v-if="regexHistory.length === 0" class="block px-3 py-1.5 text-xs text-slate-400">暂无历史记录</span>
+											</div>
+										</div>
+										<span class="text-slate-300 text-[10px]">|</span>
+										<button @click="tab.config.filters.text.excludeRegex = ''; saveState();" class="text-xs text-red-500 hover:underline">清空</button>
+									</div>
+								</div>
+								
+								<!-- Option badges (split by '|') -->
+								<div class="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-white border border-slate-200 rounded-lg">
+									<span v-for="tag in (tab.config.filters.text.excludeRegex ? tab.config.filters.text.excludeRegex.split('|').filter(x => x) : [])" :key="tag" class="inline-flex items-center bg-red-50 text-red-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-red-100/60 max-w-full">
+										<span class="truncate" :title="tag">{{ tag }}</span>
+										<button @click="removeRegexTag(tab, 'excludeRegex', tag)" title="删除此排除项" class="hover:bg-red-100 hover:text-red-900 rounded p-0.5 ml-1 inline-flex items-center shrink-0">
+											<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+										</button>
+									</span>
+									<span v-if="!tab.config.filters.text.excludeRegex" class="text-slate-400 text-xs italic p-0.5 select-none">暂无排除过滤选项 (默认放行)</span>
+								</div>
+
+								<!-- Quick Add Input -->
+								<div class="flex space-x-1">
+									<input type="text" v-model="tab.newExcludeTag" @keyup.enter="addRegexTag(tab, 'excludeRegex', tab.newExcludeTag); tab.newExcludeTag = '';" placeholder="输入关键字并回车添加..." class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
+									<button @click="addRegexTag(tab, 'excludeRegex', tab.newExcludeTag); tab.newExcludeTag = '';" title="添加新排除项" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs px-3 py-1.5 rounded-lg transition active:scale-95 transform shrink-0">添加</button>
+								</div>
+								
+								<!-- Tester -->
+								<div class="text-[11px] pt-1.5 border-t border-slate-200/60">
+									<span class="font-semibold text-slate-500">过滤拦截测试</span>
+									<input type="text" v-model="tab.excludeTestStr" placeholder="输入测试文本验证规则" class="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[11px] mt-1">
+									<div class="mt-1 font-semibold flex items-center justify-between">
+										<span class="text-slate-500">匹配判定:</span>
+										<span v-if="!tab.config.filters.text.excludeRegex" class="text-slate-400">未设置规则</span>
+										<span v-else-if="testRegexResult(tab.config.filters.text.excludeRegex, tab.excludeTestStr)" class="text-red-500">● 拦截 (匹配命中)</span>
+										<span v-else class="text-emerald-500">● 放行 (未匹配)</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- Regex Include -->
+							<div class="space-y-3 bg-slate-50 border border-slate-150 p-4 rounded-xl">
+								<div class="flex items-center justify-between">
+									<span class="text-xs font-bold text-slate-600 flex items-center space-x-1">
+										<span class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+										<span>包含正则表达式 (白名单)</span>
+									</span>
+									<div class="flex items-center space-x-1.5">
+										<!-- Save to Default -->
+										<button @click="syncRegexToCommon(tab, 'includeRegex')" title="将当前包含配置同步为系统默认，后续新建进程将自动继承" class="text-[10px] text-sky-500 font-semibold hover:underline">设为默认</button>
+										<span class="text-slate-300 text-[10px]">|</span>
+										<!-- History -->
+										<div class="relative inline-block text-left">
+											<button @click="toggleHistoryDropdown(tab, 'include')" class="text-slate-400 hover:text-slate-600" title="常用历史">
+												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+												</svg>
+											</button>
+											<div v-if="tab.activeDropdown === 'include'" class="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 z-10 py-1 max-h-48 overflow-y-auto">
+												<a v-for="h in regexHistory" :key="h" @click="applyRegex(tab, 'includeRegex', h)" class="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 cursor-pointer truncate">{{ h }}</a>
+												<span v-if="regexHistory.length === 0" class="block px-3 py-1.5 text-xs text-slate-400">暂无历史记录</span>
+											</div>
+										</div>
+										<span class="text-slate-300 text-[10px]">|</span>
+										<button @click="tab.config.filters.text.includeRegex = ''; saveState();" class="text-xs text-red-500 hover:underline">清空</button>
+									</div>
+								</div>
+								
+								<!-- Option badges (split by '|') -->
+								<div class="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-white border border-slate-200 rounded-lg">
+									<span v-for="tag in (tab.config.filters.text.includeRegex ? tab.config.filters.text.includeRegex.split('|').filter(x => x) : [])" :key="tag" class="inline-flex items-center bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-100/60 max-w-full">
+										<span class="truncate" :title="tag">{{ tag }}</span>
+										<button @click="removeRegexTag(tab, 'includeRegex', tag)" title="删除此包含项" class="hover:bg-emerald-100 hover:text-emerald-900 rounded p-0.5 ml-1 inline-flex items-center shrink-0">
+											<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+										</button>
+									</span>
+									<span v-if="!tab.config.filters.text.includeRegex" class="text-slate-400 text-xs italic p-0.5 select-none">暂无包含过滤选项 (默认放行全部)</span>
+								</div>
+
+								<!-- Quick Add Input -->
+								<div class="flex space-x-1">
+									<input type="text" v-model="tab.newIncludeTag" @keyup.enter="addRegexTag(tab, 'includeRegex', tab.newIncludeTag); tab.newIncludeTag = '';" placeholder="输入关键字并按回车添加..." class="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
+									<button @click="addRegexTag(tab, 'includeRegex', tab.newIncludeTag); tab.newIncludeTag = '';" title="添加新包含项" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs px-3 py-1.5 rounded-lg transition active:scale-95 transform shrink-0">添加</button>
+								</div>
+								
+								<!-- Tester -->
+								<div class="text-[11px] pt-1.5 border-t border-slate-200/60">
+									<span class="font-semibold text-slate-500">放行通过测试</span>
+									<input type="text" v-model="tab.includeTestStr" placeholder="输入测试文本验证规则" class="w-full bg-white border border-slate-200 rounded px-2 py-1 text-[11px] mt-1">
+									<div class="mt-1 font-semibold flex items-center justify-between">
+										<span class="text-slate-500">匹配判定:</span>
+										<span v-if="!tab.config.filters.text.includeRegex" class="text-slate-400">未设置规则 (默认全放行)</span>
+										<span v-else-if="testRegexResult(tab.config.filters.text.includeRegex, tab.includeTestStr)" class="text-emerald-500">● 放行 (匹配命中)</span>
+										<span v-else class="text-red-500">● 拦截 (未命中白名单)</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- Media Type Blockages -->
+							<div class="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-2">
+								<span class="text-xs font-bold text-slate-600 block mb-1">多媒体格式放行配置</span>
+								<div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+									<div v-for="(v, k) in tab.config.filters.mediaTypes" :key="k" class="flex items-center justify-between">
+										<span class="text-slate-600">{{ mediaTypeLabel(k) }}</span>
+										<input type="checkbox" v-model="tab.config.filters.mediaTypes[k]" class="rounded border-slate-300 text-sky-500 focus:ring-sky-500 h-3.5 w-3.5">
+									</div>
+								</div>
+							</div>
+
+						</div>
+
+						<!-- Evaluation logic description notice with hover icon carrier -->
+						<div v-show="tab.showAdvanced" class="mt-4 bg-slate-50 border border-slate-150 p-3.5 rounded-xl flex items-start space-x-2 text-xs text-slate-500 max-w-4xl hover:shadow-sm transition select-none" title="提示：白名单优先过滤。当白名单（包含正则）与黑名单（排除正则）条件同时存在时，系统将优先根据白名单过滤并选出符合要求的消息，随后对选出的消息运行黑名单逻辑，剔除掉匹配排除正则的过滤项。">
+							<span class="text-sky-500 font-bold text-sm shrink-0 leading-none cursor-help" title="点击可查看提示说明">ℹ️</span>
+							<span class="leading-relaxed"><strong>过滤引擎执行次序：</strong>白名单优先。当包含（白名单）和排除（黑名单）规则同时存在时，系统会<strong>优先匹配白名单</strong>挑选放行消息，<strong>再对其执行黑名单规则</strong>进行二次精细化排除拦截。</span>
+						</div>
+					</div>
+
+					<!-- UPCOMING MESSAGE PREVIEW CARD (Only visible when NOT running and previewData exists) -->
+					<div v-if="tab.status !== 'running' && tab.previewData" class="mt-6 border-t border-slate-100 pt-6 space-y-3">
+						<h5 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+							<span class="w-2 h-2 bg-sky-500 rounded-full animate-pulse"></span>
+							<span>即将转发的第一条消息预览</span>
+						</h5>
+						
+						<div class="border border-slate-150 rounded-2xl bg-slate-50/50 overflow-hidden shadow-inner max-w-3xl">
+							<div class="bg-slate-100 px-4 py-2 text-[11px] font-semibold text-slate-600 flex justify-between">
+								<span>源发送者: {{ tab.previewData.sender || '频道源消息' }}</span>
+								<span>消息 ID: #{{ tab.previewData.id }}</span>
+							</div>
+							
+							<div class="p-4 space-y-3">
+								<div class="flex flex-wrap items-center gap-2">
+									<span class="text-[10px] bg-sky-100 text-sky-800 font-bold rounded px-2 py-0.5 uppercase tracking-wide">
+										类型: {{ tab.previewData.type }}
+									</span>
+									<span v-if="tab.previewData.groupedId" class="text-[10px] bg-amber-100 text-amber-800 font-bold rounded px-2 py-0.5">
+										成组成员 (Grouped ID: {{ tab.previewData.groupedId }})
+									</span>
+									<span class="text-[10px] text-slate-400 font-mono">{{ formatTimestamp(tab.previewData.date) }}</span>
+								</div>
+								
+								<!-- Render base64 media thumbnail if available -->
+								<div v-if="tab.previewData.mediaBase64" class="flex justify-center bg-slate-100/60 p-2.5 rounded-xl border border-slate-200/40 shadow-inner">
+									<img :src="tab.previewData.mediaBase64" class="max-w-xs max-h-48 rounded-xl object-contain shadow-sm border border-slate-200" alt="Telegram 预览媒体">
+								</div>
+
+								<!-- Media type rich indicators (video no play, file no download) -->
+								<div v-if="tab.previewData.type !== '纯文本'" class="p-3 bg-white border border-slate-150 rounded-xl flex items-center space-x-2 text-xs font-medium text-slate-700">
+									<span v-if="tab.previewData.type === '图片'">🖼️</span>
+									<span v-else-if="tab.previewData.type === '视频'">🎥</span>
+									<span v-else-if="tab.previewData.type === '文件'">📁</span>
+									<span v-else-if="tab.previewData.type === '贴纸'">🦁</span>
+									<span v-else-if="tab.previewData.type === 'GIF动图'">⚡</span>
+									<span v-else-if="tab.previewData.type === '音频'">🎵</span>
+									<span v-else>📦</span>
+									<span>【{{ tab.previewData.type }}】消息媒体文件已加载就绪 (体积较大无需下载，转发时直接传输，零本地带宽消耗)</span>
+								</div>
+								
+								<div v-if="tab.previewData.text" class="bg-white border border-slate-150 rounded-xl p-3.5 text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-wrap max-h-48 overflow-y-auto shadow-sm select-text">
+									{{ tab.previewData.text }}
+								</div>
+							</div>
+						</div>
+						
+						<!-- Verdict alert -->
+						<div v-if="tab.previewVerdict" class="border p-3.5 rounded-xl text-xs flex items-start space-x-2 max-w-3xl" :class="tab.previewVerdict.shouldForward ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-red-50 border-red-100 text-red-800'">
+							<svg class="w-4 h-4 shrink-0 mt-0.5" :class="tab.previewVerdict.shouldForward ? 'text-emerald-500' : 'text-red-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<div>
+								<strong class="block mb-0.5">高级过滤判定：{{ tab.previewVerdict.shouldForward ? '满足放行规则 ✓' : '命中拦截规则 ❌' }}</strong>
+								<span class="opacity-90">{{ tab.previewVerdict.reason || '当前起始消息完全匹配您的正则表达式和放行格式。' }}</span>
+							</div>
+						</div>
+					</div>
+
+					<!-- ACTION CONTROL BUTTONS -->
+					<div class="mt-6 border-t border-slate-100 pt-6 flex flex-wrap gap-3">
+						
+						<!-- Step-by-step Trigger (Preview) -->
+						<button @click="triggerPreview(tab)" title="【消息预览】：拉取并解析即将转发的首条消息，并在面板中前置验证它是否符合您的正则表达式或媒体放行规则。推荐在开启转发前执行此验证，以防发错！" class="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform disabled:opacity-60 disabled:cursor-not-allowed shadow-sm border border-slate-200" :disabled="tab.status === 'running' || tab.previewLoading">
+							<svg v-if="!tab.previewLoading" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+							</svg>
+							<svg v-else class="animate-spin -ml-1 mr-1.5 h-4 w-4 text-slate-700" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							</svg>
+							<span>{{ tab.previewLoading ? '拉取消息预览中...' : '1. 消息预览 (确认前置)' }}</span>
+						</button>
+
+						<!-- Start/Resume Button -->
+						<button v-if="tab.status === 'idle' || tab.status === 'paused'" @click="startForwarding(tab)" title="【开始自动转发】：开启后台自动轮询机制。前端将以配置的基础延迟加上随机时间抖动，安全、单步地驱动后端转发消息，直到跑完或者最新消息！" class="flex items-center space-x-1.5 bg-sky-500 hover:bg-sky-600 text-white px-5 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform shadow-sm">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<span>2. 开启自动转发</span>
+						</button>
+
+						<!-- Pause Button -->
+						<button v-if="tab.status === 'running'" @click="pauseForwarding(tab)" title="【暂停进程】：临时挂起自动转发。当前处理的进度 ID 将完美保存在浏览器中，稍后点击「开启自动转发」可随时断点续发。" class="flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-white px-5 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform shadow-sm">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<span>暂停进程</span>
+						</button>
+
+						<!-- Retry Button -->
+						<button v-if="tab.status === 'error'" @click="startForwarding(tab)" title="【一键重试】：如果在自动转发过程中因网络断开、RPC限速报错发生中断，点击此按钮可一键在异常中断的消息 ID 处进行续发，防重复防漏发。" class="flex items-center space-x-1.5 bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform shadow-sm">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 15H19" />
+							</svg>
+							<span>一键重试 (恢复进度)</span>
+						</button>
+						
+						<!-- Clear Logs -->
+						<button @click="clearTabLogs(tab)" title="【清空日志】：一键抹除控制台显示的实时历史，并不会删除本地的 log 硬盘日志文件。" class="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform border border-slate-200 shadow-sm">
+							<span>清空日志面板</span>
+						</button>
+
+					</div>
+
+				</div>
+
+				<!-- LOWER SECTION: Terminal Output Logs -->
+				<div class="bg-slate-900 rounded-2xl shadow-inner border border-slate-950 flex flex-col min-h-[350px] max-h-[500px]">
+					<!-- Header console -->
+					<div class="bg-slate-950 px-4 py-3 rounded-t-2xl flex items-center justify-between border-b border-slate-900 text-xs">
+						<div class="flex items-center space-x-2">
+							<span class="w-3 h-3 rounded-full bg-red-500"></span>
+							<span class="w-3 h-3 rounded-full bg-amber-500"></span>
+							<span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+							<span class="text-slate-400 font-medium terminal-font pl-2">实时日志终端 output.log</span>
+						</div>
+						
+						<div class="flex items-center space-x-3 text-slate-400 select-none">
+							<div class="flex items-center space-x-1.5">
+								<button @click="scrollToTop(tab.id)" title="【一键到顶】：快速向上滚动到当前进程终端日志的最顶部" class="hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded transition text-[10px] font-bold active:scale-90 transform">▲ 顶</button>
+								<button @click="scrollToBottom(tab.id)" title="【一键到底】：快速向下滚动到当前进程终端日志的最底部" class="hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded transition text-[10px] font-bold active:scale-90 transform">▼ 底</button>
+							</div>
+							
+							<span class="text-slate-600">|</span>
+
+							<div class="flex items-center space-x-1">
+								<input type="checkbox" v-model="tab.scrollLock" id="scroll_lock" class="rounded bg-slate-800 border-slate-700 text-sky-500">
+								<label for="scroll_lock" class="cursor-pointer">锁定到底部</label>
+							</div>
+							
+							<span class="text-slate-600">|</span>
+							
+							<span>成功转发: <strong class="text-emerald-500">{{ tab.successCount }}</strong> 条</span>
+						</div>
+					</div>
+
+					<!-- Console Terminal View -->
+					<div :id="'terminal_' + tab.id" class="flex-grow p-4 overflow-y-auto terminal-font text-xs terminal-scroll space-y-1.5">
+						<div v-for="(log, lIdx) in tab.logs" :key="lIdx" class="leading-relaxed whitespace-pre-wrap">
+							<span class="text-slate-500 font-light select-none">[{{ log.timestamp }}]</span>
+							<span :class="{
+								'text-sky-400 font-medium': log.level === 'Info',
+								'text-emerald-400 font-semibold': log.level === 'Success',
+								'text-amber-400 font-medium': log.level === 'Warn',
+								'text-red-400 font-semibold': log.level === 'Error'
+							}"> [{{ log.level }}]</span>
+							<span class="text-slate-300"> {{ log.message }}</span>
+						</div>
+						
+						<!-- Idle message inside terminal -->
+						<div v-if="tab.logs.length === 0" class="text-slate-600 italic">
+							终端就绪，等待自动转发开始...
+						</div>
+					</div>
+					
+				</div>
+
+			</div>
+		</main>
+
+		<!-- ================= MODALS ================= -->
+
+		<!-- SESSION & DESTINATION MANAGER MODAL -->
+		<div v-if="modals.session" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+			<div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-2xl w-full flex flex-col max-h-[85vh] transition-all">
+				
+				<div class="p-6 border-b border-slate-100 flex items-center justify-between">
+					<h3 class="text-lg font-bold text-slate-800">会话与共享目的地管理</h3>
+					<button @click="closeModals" class="text-slate-400 hover:text-slate-600">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+
+				<!-- Modal Sub-tabs -->
+				<div class="px-6 pt-3 flex border-b border-slate-150 bg-slate-50/50 rounded-t-xl">
+					<button @click="sessionModalTab = 'sessions'" class="px-5 py-2.5 text-xs font-bold border-b-2 transition flex items-center space-x-1.5" :class="sessionModalTab === 'sessions' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 hover:text-slate-700'">
+						<span>👤 执行账号/身份</span>
+						<span class="bg-slate-200 text-slate-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{{ sessions.length }}</span>
+					</button>
+					<button @click="sessionModalTab = 'destinations'" class="px-5 py-2.5 text-xs font-bold border-b-2 transition flex items-center space-x-1.5" :class="sessionModalTab === 'destinations' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500 hover:text-slate-700'">
+						<span>🎯 共享目标群组/频道</span>
+						<span class="bg-slate-200 text-slate-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">{{ destinations.length }}</span>
+					</button>
+				</div>
+
+				<div class="p-6 overflow-y-auto flex-grow space-y-6">
+					
+					<!-- Tab 1: Sessions -->
+					<div v-if="sessionModalTab === 'sessions'" class="space-y-6">
+						<!-- Active session list -->
+						<div class="space-y-2">
+							<h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">已添加的身份账号</h4>
+							
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+								<div v-for="s in sessions" :key="s.id" class="border border-slate-150 rounded-xl p-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition">
+									<div class="truncate mr-2">
+										<span class="block text-xs font-bold text-slate-800 truncate">{{ s.name }}</span>
+										<span class="text-[10px] bg-slate-200 text-slate-600 rounded px-1 py-0.5 inline-block mt-1 uppercase font-semibold tracking-wider">
+											{{ s.type }}
+										</span>
+										<span v-if="s.phone" class="text-[10px] text-slate-500 block mt-0.5 font-mono">{{ s.phone }}</span>
+									</div>
+									
+									<button @click="deleteSession(s.id)" class="text-slate-400 hover:text-red-500 transition shrink-0 p-1 rounded-lg">
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+										</svg>
+									</button>
+								</div>
+								
+								<div v-if="sessions.length === 0" class="col-span-2 text-center py-6 text-sm text-slate-400 italic">
+									暂无任何登录身份，请在下方添加
+								</div>
+							</div>
+						</div>
+
+						<!-- Form to Add Identity -->
+						<div class="border-t border-slate-100 pt-6 space-y-4">
+							<h4 class="text-sm font-bold text-slate-700">添加新的执行身份 (多模式支持)</h4>
+							
+							<!-- Tabs within Form -->
+							<div class="flex border-b border-slate-150">
+								<button @click="newSession.formType = 'telegram'" class="px-4 py-2 text-xs font-bold border-b-2" :class="newSession.formType === 'telegram' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'">Telegram 快捷登录 (SMS)</button>
+								<button @click="newSession.formType = 'string'" class="px-4 py-2 text-xs font-bold border-b-2" :class="newSession.formType === 'string' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'">手动 SessionString</button>
+								<button @click="newSession.formType = 'bot'" class="px-4 py-2 text-xs font-bold border-b-2" :class="newSession.formType === 'bot' ? 'border-sky-500 text-sky-600' : 'border-transparent text-slate-500'">Bot 凭证 (Token)</button>
+							</div>
+
+							<!-- API Credential Override Warning -->
+							<div class="bg-slate-50 border border-slate-200 rounded-lg p-3 grid grid-cols-2 gap-3 text-xs">
+								<div>
+									<label class="block font-semibold text-slate-600 mb-0.5">API_ID</label>
+									<input type="text" v-model="newSession.apiId" placeholder="使用默认值或重写" class="w-full bg-white border border-slate-200 rounded px-2 py-1">
+								</div>
+								<div>
+									<label class="block font-semibold text-slate-600 mb-0.5">API_HASH</label>
+									<input type="text" v-model="newSession.apiHash" placeholder="使用默认值或重写" class="w-full bg-white border border-slate-200 rounded px-2 py-1">
+								</div>
+								<div class="col-span-2">
+									<label class="block font-semibold text-slate-600 mb-0.5">Socks5 代理</label>
+									<input type="text" v-model="newSession.proxy" placeholder="socks5://127.0.0.1:1082" class="w-full bg-white border border-slate-200 rounded px-2 py-1">
+								</div>
+							</div>
+
+							<!-- Form 1: Telegram SMS Flow -->
+							<div v-if="newSession.formType === 'telegram'" class="space-y-3">
+								<div class="flex space-x-2">
+									<div class="flex-grow">
+										<label class="block text-xs text-slate-600 mb-1">国际手机号码 (包含国家码前缀，例如: +86138xxxxxxxx)</label>
+										<input type="text" v-model="newSession.phone" placeholder="+86138xxxxxxxx" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+									</div>
+									<div class="flex items-end">
+										<button @click="getTelegramSMSCode" class="bg-sky-500 hover:bg-sky-600 text-white font-medium text-xs px-4 py-2.5 rounded-lg h-10 transition shrink-0 flex items-center space-x-1 hover:shadow active:scale-95 transform disabled:opacity-50 disabled:cursor-not-allowed" :disabled="newSession.loading">
+											<svg v-if="newSession.loading" class="animate-spin -ml-1 mr-1.5 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+												<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+												<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+											</svg>
+											<span>{{ newSession.loading ? '获取中...' : '获取验证码' }}</span>
+										</button>
+									</div>
+								</div>
+								
+								<div v-if="newSession.smsSent" class="grid grid-cols-2 gap-3">
+									<div>
+										<label class="block text-xs text-slate-600 mb-1">输入短信验证码 (Code)</label>
+										<input type="text" v-model="newSession.code" placeholder="输入5位验证码" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+									</div>
+									<div>
+										<label class="block text-xs text-slate-600 mb-1">两步验证密码 (若无请留空)</label>
+										<input type="password" v-model="newSession.password" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+									</div>
+								</div>
+							</div>
+
+							<!-- Form 2: Manual Session String -->
+							<div v-if="newSession.formType === 'string'" class="space-y-3">
+								<div class="grid grid-cols-2 gap-3">
+									<div>
+										<label class="block text-xs text-slate-600 mb-1">识别昵称 (Alias)</label>
+										<input type="text" v-model="newSession.name" placeholder="例如: 备用账号" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+									</div>
+									<div>
+										<label class="block text-xs text-slate-600 mb-1">绑定手机号 (Phone)</label>
+										<input type="text" v-model="newSession.phone" placeholder="+86138xxxxxxxx" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+									</div>
+								</div>
+								<div>
+									<label class="block text-xs text-slate-600 mb-1">Session String (GramJS格式纯文本)</label>
+									<textarea v-model="newSession.sessionString" rows="3" placeholder="粘入你已有的 Session String..." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono"></textarea>
+								</div>
+							</div>
+
+							<!-- Form 3: Bot Token -->
+							<div v-if="newSession.formType === 'bot'" class="space-y-3">
+								<div>
+									<label class="block text-xs text-slate-600 mb-1">Telegram Bot Token (从 @BotFather 获取)</label>
+									<input type="text" v-model="newSession.botToken" placeholder="例如: 123456789:ABCdefGhI..." class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono">
+								</div>
+							</div>
+						</div>
+
+						<!-- Status & Error Notice Banner -->
+						<div v-if="newSession.statusText || newSession.validationError" class="p-3.5 rounded-xl text-xs flex items-start space-x-2 transition-all duration-300 shadow-inner mt-4" :class="{
+							'bg-sky-50 border border-sky-100 text-sky-800': newSession.statusText && !newSession.validationError,
+							'bg-red-50 border border-red-100 text-red-800': newSession.validationError
+						}">
+							<svg v-if="!newSession.validationError" class="w-4 h-4 text-sky-500 animate-pulse shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							</svg>
+							<svg v-else class="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+							</svg>
+							<span class="font-semibold select-text leading-relaxed">{{ newSession.validationError || newSession.statusText }}</span>
+						</div>
+
+					</div>
+
+					<!-- Tab 2: Destinations -->
+					<div v-if="sessionModalTab === 'destinations'" class="space-y-6">
+						<!-- Shared Destinations List -->
+						<div class="space-y-2">
+							<h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">共享目标频道/群组池</h4>
+							
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+								<div v-for="d in destinations" :key="d.id" class="border border-slate-150 rounded-xl p-3 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition">
+									<div class="truncate mr-2">
+										<span class="block text-xs font-bold text-slate-800 truncate">{{ d.title }}</span>
+										<span class="text-[10px] text-slate-500 block mt-0.5 font-mono">{{ d.entityId }}</span>
+									</div>
+									
+									<button @click="deleteDestination(d.id)" class="text-slate-400 hover:text-red-500 transition shrink-0 p-1 rounded-lg">
+										<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+										</svg>
+									</button>
+								</div>
+								
+								<div v-if="destinations.length === 0" class="col-span-2 text-center py-6 text-sm text-slate-400 italic">
+									暂无任何已验证目的地，可在下方输入添加
+								</div>
+							</div>
+						</div>
+
+						<!-- Form to Add Destination -->
+						<div class="border-t border-slate-100 pt-6 space-y-4">
+							<h4 class="text-sm font-bold text-slate-700">验证并添加新共享目的地</h4>
+							
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+								<div>
+									<label class="block text-xs text-slate-600 mb-1">选择验证所用账号会话 *</label>
+									<select v-model="newDest.selectedSessionId" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+										<option value="">-- 选择可用身份 --</option>
+										<option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.name }}</option>
+									</select>
+								</div>
+								<div>
+									<label class="block text-xs text-slate-600 mb-1">目的地 Username / ID *</label>
+									<input type="text" v-model="newDest.entityId" placeholder="例如: @dest_channel 或 -100xxx" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+								</div>
+							</div>
+
+							<!-- Status & Error Notice Banner -->
+							<div v-if="newDest.statusText || newDest.validationError" class="p-3.5 rounded-xl text-xs flex items-start space-x-2 transition-all duration-300 shadow-inner" :class="{
+								'bg-sky-50 border border-sky-100 text-sky-800': newDest.statusText && !newDest.validationError,
+								'bg-red-50 border border-red-100 text-red-800': newDest.validationError
+							}">
+								<svg v-if="!newDest.validationError" class="w-4 h-4 text-sky-500 animate-pulse shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+								</svg>
+								<svg v-else class="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+								</svg>
+								<span class="font-semibold select-text leading-relaxed">{{ newDest.validationError || newDest.statusText }}</span>
+							</div>
+
+							<button @click="confirmAddDestination" class="bg-sky-500 hover:bg-sky-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition active:scale-95 transform shadow-sm flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="newDest.loading">
+								<svg v-if="newDest.loading" class="animate-spin -ml-1 mr-1.5 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
+								<span>{{ newDest.loading ? '正在验证...' : '验证并加入目的地池' }}</span>
+							</button>
+						</div>
+					</div>
+
+				</div>
+
+				<div class="p-6 border-t border-slate-100 bg-slate-50 flex items-center justify-between rounded-b-2xl">
+					<span class="text-xs text-slate-500 font-medium">
+						提示: 数据都保存在浏览器的 LocalStorage 中，共享给所有转发标签页。
+					</span>
+					
+					<div class="flex space-x-2">
+						<button @click="closeModals" class="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition">关闭</button>
+						<button v-if="sessionModalTab === 'sessions' && (newSession.formType !== 'telegram' || newSession.smsSent)" @click="confirmAddIdentity" class="bg-sky-500 hover:bg-sky-600 text-white px-5 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform shadow-sm flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="newSession.loading">
+							<svg v-if="newSession.loading" class="animate-spin -ml-1 mr-1.5 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							</svg>
+							<span>{{ newSession.loading ? '正在添加...' : '确认添加身份' }}</span>
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- GLOBAL CONFIG MODAL -->
+		<div v-if="modals.config" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+			<div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-xl w-full flex flex-col max-h-[85vh] transition-all">
+				
+				<div class="p-6 border-b border-slate-100 flex items-center justify-between">
+					<h3 class="text-lg font-bold text-slate-800">公共默认配置 (浏览器持久化)</h3>
+					<button @click="closeModals" class="text-slate-400 hover:text-slate-600">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+
+				<div class="p-6 overflow-y-auto flex-grow space-y-5">
+					<p class="text-xs text-slate-500">新建标签页进程时，将默认继承此处配置。各标签页可以在继承后进行个性化覆盖修改。</p>
+					
+					<!-- Defaults: Rate -->
+					<div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+						<h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">默认运行参数</h4>
+						<div class="grid grid-cols-2 gap-3">
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">基础延迟 (毫秒)</label>
+								<input type="number" v-model.number="commonConfig.settings.delayMs" class="w-full bg-white border border-slate-200 rounded px-2.5 py-1.5 text-xs focus:outline-none">
+							</div>
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">最大连续空消息数</label>
+								<input type="number" v-model.number="commonConfig.settings.maxConsecutiveFailures" class="w-full bg-white border border-slate-200 rounded px-2.5 py-1.5 text-xs focus:outline-none">
+							</div>
+						</div>
+						
+						<div class="grid grid-cols-2 gap-3 pt-2">
+							<div class="flex items-center justify-between col-span-2">
+								<span class="text-xs text-slate-600">显示原始消息来源 (显示作者)</span>
+								<input type="checkbox" v-model="commonConfig.settings.showSenderNames" class="rounded text-sky-500 h-4 w-4">
+							</div>
+						</div>
+					</div>
+
+					<!-- Defaults: Media Types -->
+					<div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+						<h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">默认放行媒体格式</h4>
+						<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+							<div v-for="(v, k) in commonConfig.filters.mediaTypes" :key="k" class="flex items-center justify-between py-1">
+								<span class="text-slate-600">{{ mediaTypeLabel(k) }}</span>
+								<input type="checkbox" v-model="commonConfig.filters.mediaTypes[k]" class="rounded text-sky-500 h-3.5 w-3.5">
+							</div>
+						</div>
+					</div>
+
+				</div>
+
+				<div class="p-6 border-t border-slate-100 flex items-center justify-end space-x-2">
+					<button @click="closeModals" class="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition">取消</button>
+					<button @click="saveCommonConfig" class="bg-sky-500 hover:bg-sky-600 text-white px-5 py-2 rounded-xl text-sm font-semibold transition shadow-sm">保存全局配置</button>
+				</div>
+
+			</div>
+		</div>
+
+		<!-- EXPORT/IMPORT MODAL -->
+		<div v-if="modals.backup" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+			<div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-xl w-full flex flex-col max-h-[85vh] transition-all">
+				
+				<div class="p-6 border-b border-slate-100 flex items-center justify-between">
+					<h3 class="text-lg font-bold text-slate-800">全部配置导入与导出</h3>
+					<button @click="closeModals" class="text-slate-400 hover:text-slate-600">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+
+				<div class="p-6 overflow-y-auto flex-grow space-y-4">
+					<p class="text-xs text-slate-500 leading-relaxed">此处用于备份你当前的全部配置。包含登录 Sessions 会话密匙、全局公共设置、多进程 Tab 历史与正则规则等。
+						<strong class="text-red-500 block mt-1">⚠️ 注意：Session String 代表你的 Telegram 账号完全控制权，请妥善保管此备份文本！切勿泄露！</strong>
+					</p>
+					
+					<div>
+						<textarea v-model="backupText" rows="10" placeholder="粘入已备份好的JSON配置，或点击下方按钮复制备份..." class="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs font-mono focus:outline-none"></textarea>
+					</div>
+					
+					<div class="flex justify-between items-center text-xs">
+						<span v-if="backupMessage" class="text-emerald-600 font-semibold">{{ backupMessage }}</span>
+						<span v-else class="text-slate-400">支持直接通过系统剪切板一键操作。</span>
+					</div>
+				</div>
+
+				<div class="p-6 border-t border-slate-100 flex items-center justify-between rounded-b-2xl bg-slate-50">
+					<button @click="exportToClipboard" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-xl text-xs font-semibold transition active:scale-95 transform shadow-sm flex items-center space-x-1" :disabled="backupCopied">
+						<svg v-if="!backupCopied" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+						</svg>
+						<svg v-else class="w-4 h-4 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+						</svg>
+						<span>{{ backupCopied ? '已成功复制！✓' : '导出全部配置到剪贴板' }}</span>
+					</button>
+					
+					<div class="flex space-x-2">
+						<button @click="closeModals" class="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition">取消</button>
+						<button @click="importFromClipboard" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-semibold transition shadow-sm">从输入框导入</button>
+					</div>
+				</div>
+
+			</div>
+		</div>
+
+		<!-- ADD TAB PROCESS MODAL -->
+		<div v-if="modals.addTab" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+			<div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full flex flex-col transition-all">
+				
+				<div class="p-6 border-b border-slate-100 flex items-center justify-between">
+					<h3 class="text-lg font-bold text-slate-800">新建转发进程标签页</h3>
+					<button @click="closeModals" class="text-slate-400 hover:text-slate-600">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+
+				<div class="p-6 space-y-4">
+					<p class="text-xs text-slate-500">一个进程对应一个确定的转发目的地（接收消息的群组、频道或群管理员）。</p>
+					
+					<div>
+						<label class="block text-xs font-semibold text-slate-600 mb-1">选择登录账号以查找目的地实体 *</label>
+						<select v-model="newTab.selectedSessionId" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+							<option value="">-- 选择可用身份 --</option>
+							<option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.name }}</option>
+						</select>
+					</div>
+
+					<div>
+						<label class="block text-xs font-semibold text-slate-600 mb-1">选择目标群组/频道 * (Destination)</label>
+						<select v-model="newTab.selectedDestId" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none mb-3">
+							<option value="manual">-- 手动输入并验证新目的地 --</option>
+							<option v-for="d in destinations" :key="d.id" :value="d.id">
+								🎯 {{ d.title }} ({{ d.entityId }})
+							</option>
+						</select>
+					</div>
+
+					<div v-if="newTab.selectedDestId === 'manual'">
+						<label class="block text-xs font-semibold text-slate-600 mb-1">目标转发群/频道 * (Destination Channel)</label>
+						<input type="text" v-model="newTab.destination" placeholder="例如: @my_dest_channel 或 -1001234567" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+						<p class="text-[10px] text-slate-400 mt-1">提示: 可以是频道的Username(带@)或群组ID(通常是-100开头)。验证成功后将自动加入共享复用池！</p>
+					</div>
+
+					<div>
+						<label class="block text-xs font-semibold text-slate-600 mb-1">起始消息链接 * (Start Message Link)</label>
+						<input type="text" v-model="newTab.startLink" placeholder="例如: https://t.me/c/1602247395/123" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+						<p class="text-[10px] text-slate-400 mt-1">提示: 电报消息链接，系统将自动解析出原频道和起始消息 ID！</p>
+					</div>
+					
+					<!-- Status & Error Notice Banner -->
+					<div v-if="newTab.statusText || newTab.validationError" class="p-3.5 rounded-xl text-xs flex items-start space-x-2 transition-all duration-300 shadow-inner" :class="{
+						'bg-sky-50 border border-sky-100 text-sky-800': newTab.statusText && !newTab.validationError,
+						'bg-red-50 border border-red-100 text-red-800': newTab.validationError
+					}">
+						<svg v-if="!newTab.validationError" class="w-4 h-4 text-sky-500 animate-pulse shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<svg v-else class="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+						</svg>
+						<span class="font-semibold select-text leading-relaxed">{{ newTab.validationError || newTab.statusText }}</span>
+					</div>
+				</div>
+
+				<div class="p-6 border-t border-slate-100 flex items-center justify-end space-x-2">
+					<button @click="closeModals" class="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform">取消</button>
+					<button @click="confirmCreateTab" class="bg-sky-500 hover:bg-sky-600 text-white px-5 py-2 rounded-xl text-sm font-semibold transition active:scale-95 transform shadow-sm flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="newTab.loading">
+						<svg v-if="newTab.loading" class="animate-spin -ml-1 mr-1.5 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+						</svg>
+						<span>{{ newTab.loading ? '创建中...' : '确认并创建' }}</span>
+					</button>
+				</div>
+
+			</div>
+		</div>
+
+		<!-- PREVIEW FIRST MESSAGE MODAL -->
+		<div v-if="modals.preview" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+			<div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-lg w-full flex flex-col transition-all">
+				
+				<div class="p-6 border-b border-slate-100 flex items-center justify-between">
+					<h3 class="text-lg font-bold text-slate-800 flex items-center space-x-2">
+						<span class="w-2.5 h-2.5 rounded-full bg-sky-500 animate-ping"></span>
+						<span>待转发起始消息预览</span>
+					</h3>
+					<button @click="closeModals" class="text-slate-400 hover:text-slate-600">
+						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</div>
+
+				<div class="p-6 space-y-4">
+					<p class="text-xs text-slate-500">我们将按照你的高级过滤规则对第一条消息进行前置拦截测试。以下是拉取到的 Telegram 原始内容：</p>
+					
+					<!-- Preview details card -->
+					<div v-if="previewData" class="border border-slate-150 rounded-2xl bg-slate-50 overflow-hidden shadow-inner">
+						<div class="bg-slate-200/60 px-4 py-2 text-[11px] font-semibold text-slate-600 flex justify-between">
+							<span>发送者: {{ previewData.sender || '频道源消息' }}</span>
+							<span>ID: #{{ previewData.id }}</span>
+						</div>
+						
+						<div class="p-4 space-y-3">
+							<div class="flex items-center space-x-2">
+								<span class="text-xs bg-sky-100 text-sky-800 font-bold rounded px-2 py-0.5">
+									{{ previewData.type }}
+								</span>
+								<span v-if="previewData.groupedId" class="text-xs bg-amber-100 text-amber-800 font-bold rounded px-2 py-0.5">
+									成组成员 (Grouped ID: {{ previewData.groupedId }})
+								</span>
+								<span class="text-[10px] text-slate-400 font-mono">{{ formatTimestamp(previewData.date) }}</span>
+							</div>
+							
+							<!-- Render base64 media thumbnail if available -->
+							<div v-if="previewData.mediaBase64" class="flex justify-center bg-slate-100 p-2.5 rounded-xl border border-slate-200/60 shadow-inner">
+								<img :src="previewData.mediaBase64" class="max-w-xs max-h-48 rounded-xl object-contain shadow-sm border border-slate-200" alt="Telegram 预览媒体">
+							</div>
+
+							<div class="bg-white border border-slate-150 rounded-xl p-3 text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+								{{ previewData.text || '(无文本，仅包含多媒体内容)' }}
+							</div>
+						</div>
+					</div>
+					
+					<!-- Validation verdict -->
+					<div v-if="previewVerdict" class="border p-3.5 rounded-xl text-xs flex items-start space-x-2" :class="previewVerdict.shouldForward ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-red-50 border-red-100 text-red-800'">
+						<svg class="w-5 h-5 shrink-0 mt-0.5" :class="previewVerdict.shouldForward ? 'text-emerald-500' : 'text-red-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<div>
+							<strong class="block mb-0.5">前置规则验证：{{ previewVerdict.shouldForward ? '通过放行 (将会转发) ✓' : '过滤拦截 (将会跳过) ❌' }}</strong>
+							<span class="opacity-90">{{ previewVerdict.reason || '该消息满足当前配置的所有高级文本正则与多媒体放行规则。' }}</span>
+						</div>
+					</div>
+				</div>
+
+				<div class="p-6 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex items-center justify-end space-x-2">
+					<button @click="closeModals" class="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition">关闭</button>
+					<button v-if="previewVerdict && previewVerdict.shouldForward" @click="confirmStartAfterPreview" class="bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2 rounded-xl text-xs font-semibold transition shadow-sm">
+						确认通过并开始转发
+					</button>
+				</div>
+
+			</div>
+		</div>
+
+		<!-- GLOBAL FLOATING TOASTS -->
+		<div class="fixed top-5 right-5 z-[100] flex flex-col space-y-3 max-w-sm w-full pointer-events-none">
+			<transition-group 
+				enter-active-class="transform ease-out duration-300 transition" 
+				enter-from-class="translate-y-2 opacity-0 sm:translate-y-0 sm:translate-x-2" 
+				enter-to-class="translate-y-0 opacity-100 sm:translate-x-0" 
+				leave-active-class="transition ease-in duration-200" 
+				leave-from-class="opacity-100" 
+				leave-to-class="opacity-0"
+			>
+				<div v-for="t in toasts" :key="t.id" class="p-4 rounded-xl shadow-lg border text-xs font-semibold flex items-center space-x-2 bg-white pointer-events-auto shadow-slate-200/50" :class="{
+					'border-emerald-100 bg-emerald-50 text-emerald-800': t.type === 'success',
+					'border-red-100 bg-red-50 text-red-800': t.type === 'error',
+					'border-sky-100 bg-sky-50 text-sky-800': t.type === 'info',
+					'border-amber-100 bg-amber-50 text-amber-800': t.type === 'warn',
+				}">
+					<svg v-if="t.type === 'success'" class="w-5 h-5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<svg v-if="t.type === 'error'" class="w-5 h-5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<svg v-if="t.type === 'info'" class="w-5 h-5 text-sky-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<svg v-if="t.type === 'warn'" class="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+					</svg>
+					<span>{{ t.message }}</span>
+				</div>
+			</transition-group>
+		</div>
+
+	</div>
+
+	<!-- Vue 3 ESM Browser Build -->
+	<script type="module">
+		import { createApp, ref, reactive, computed, onMounted, watch, nextTick } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
+
+		createApp({
+			setup() {
+				// State variables
+				const sessions = ref([]);
+				const destinations = ref([]);
+				const sessionModalTab = ref('sessions'); // 'sessions' | 'destinations'
+				const tabs = ref([]);
+				const activeTabId = ref(null);
+				const regexHistory = ref([]);
+				
+				const backupText = ref('');
+				const backupMessage = ref('');
+				
+				const previewData = ref(null);
+				const previewVerdict = ref(null);
+				let pendingPreviewTab = null;
+
+				// Global config defaults
+				const commonConfig = ref({
+					filters: {
+						text: { excludeRegex: '', includeRegex: '' },
+						mediaTypes: {
+							allowTextOnly: true,
+							allowPhoto: true,
+							allowVideo: true,
+							allowDocument: true,
+							allowSticker: false,
+							allowAnimation: false,
+							allowAudio: true,
+							allowVoice: false
+						}
+					},
+					settings: {
+						maxConsecutiveFailures: 200,
+						delayMs: 1500,
+						jitterRange: [0.95, 1.45],
+						showSenderNames: true,
+						comments: {
+							enabled: true,
+							mode: 'media'
+						}
+					}
+				});
+
+				// Modals Visibility
+				const modals = reactive({
+					session: false,
+					config: false,
+					backup: false,
+					addTab: false,
+					preview: false
+				});
+
+				// Global Floating Toasts
+				const toasts = ref([]);
+				const showToast = (message, type = 'success') => {
+					const id = Date.now() + Math.random().toString(36).substring(2, 7);
+					toasts.value.push({ id, type, message });
+					setTimeout(() => {
+						toasts.value = toasts.value.filter(t => t.id !== id);
+					}, 3000);
+				};
+
+				// Form State: New Session Identity
+				const newSession = reactive({
+					formType: 'telegram',
+					phone: '',
+					botToken: '',
+					name: '',
+					sessionString: '',
+					apiId: '',
+					apiHash: '',
+					proxy: '',
+					loading: false,
+					statusText: '',
+					smsSent: false,
+					phoneCodeHash: '',
+					code: '',
+					password: ''
+				});
+
+				// Form State: New Tab
+				const newTab = reactive({
+					selectedDestId: 'manual',
+					destination: '',
+					selectedSessionId: '',
+					startLink: '',
+					loading: false,
+					statusText: '',
+					validationError: ''
+				});
+
+				// Form State: New Destination
+				const newDest = reactive({
+					selectedSessionId: '',
+					entityId: '',
+					loading: false,
+					statusText: '',
+					validationError: ''
+				});
+
+				// Core active tab resolver
+				const currentTab = computed(() => {
+					if (tabs.value.length === 0) return null;
+					const found = tabs.value.find(t => t.id === activeTabId.value);
+					if (found) return found;
+					// Fallback to first available tab
+					activeTabId.value = tabs.value[0].id;
+					return tabs.value[0];
+				});
+
+				// Save state to localStorage
+				const saveState = () => {
+					const sanitizedTabs = tabs.value.map(t => {
+						// Clean runtime objects from persistence
+						const { timerId, activeDropdown, ...rest } = t;
+						return {
+							...rest,
+							// Pause active tabs on reload to avoid ghost triggers
+							status: t.status === 'running' ? 'paused' : t.status
+						};
+					});
+					
+					localStorage.setItem('telegram_forwarder_sessions', JSON.stringify(sessions.value));
+					localStorage.setItem('telegram_forwarder_destinations', JSON.stringify(destinations.value));
+					localStorage.setItem('telegram_forwarder_tabs', JSON.stringify(sanitizedTabs));
+					localStorage.setItem('telegram_forwarder_active_tab_id', JSON.stringify(activeTabId.value));
+					localStorage.setItem('telegram_forwarder_common_config', JSON.stringify(commonConfig.value));
+					localStorage.setItem('telegram_forwarder_regex_history', JSON.stringify(regexHistory.value));
+				};
+
+				// Load state from localStorage on boot
+				const loadState = async () => {
+					const storedSessions = localStorage.getItem('telegram_forwarder_sessions');
+					if (storedSessions) sessions.value = JSON.parse(storedSessions);
+
+					const storedDestinations = localStorage.getItem('telegram_forwarder_destinations');
+					if (storedDestinations) destinations.value = JSON.parse(storedDestinations);
+
+					const storedCommon = localStorage.getItem('telegram_forwarder_common_config');
+					if (storedCommon) commonConfig.value = JSON.parse(storedCommon);
+
+					const storedHistory = localStorage.getItem('telegram_forwarder_regex_history');
+					if (storedHistory) regexHistory.value = JSON.parse(storedHistory);
+
+					const storedTabs = localStorage.getItem('telegram_forwarder_tabs');
+					if (storedTabs) {
+						tabs.value = JSON.parse(storedTabs).map(t => ({
+							...t,
+							timerId: null,
+							activeDropdown: null,
+							scrollLock: t.scrollLock !== undefined ? t.scrollLock : true,
+							excludeTestStr: t.excludeTestStr || '',
+							includeTestStr: t.includeTestStr || '',
+							showAdvanced: t.showAdvanced !== undefined ? t.showAdvanced : false
+						}));
+					}
+
+					const storedActiveTab = localStorage.getItem('telegram_forwarder_active_tab_id');
+					if (storedActiveTab) activeTabId.value = JSON.parse(storedActiveTab);
+					
+					// Seed from local configuration endpoints on first load
+					try {
+						const res = await fetch('/api/init');
+						const backendInit = await res.json();
+						
+						// Seed defaults into forms
+						newSession.apiId = backendInit.API_ID || '';
+						newSession.apiHash = backendInit.API_HASH || '';
+						newSession.proxy = backendInit.TELEGRAM_PROXY || '';
+						
+						if (backendInit.localConfig && !storedCommon) {
+							// Merge file config as public config
+							commonConfig.value.filters.text = { ...commonConfig.value.filters.text, ...backendInit.localConfig.filters?.text };
+							commonConfig.value.filters.mediaTypes = { ...commonConfig.value.filters.mediaTypes, ...backendInit.localConfig.filters?.mediaTypes };
+							commonConfig.value.settings = { ...commonConfig.value.settings, ...backendInit.localConfig.settings };
+							saveState();
+						}
+
+						// Seed shared destinations from environment variables if not already initialized
+						if (backendInit.DEST_CHANNEL && !storedDestinations) {
+							const splitDests = backendInit.DEST_CHANNEL.split(',').map(d => d.trim()).filter(d => d);
+							splitDests.forEach((d, idx) => {
+								destinations.value.push({
+									id: 'dest_' + Date.now() + idx,
+									title: d,
+									entityId: d
+								});
+							});
+							saveState();
+						}
+					} catch (err) {
+						console.warn("Failed to retrieve system bootstrap presets:", err);
+					}
+
+					// Background resolve destination titles
+					resolveDestinationNames();
+				};
+
+				const resolveDestinationNames = async () => {
+					// Find all destinations that only have their ID as title (e.g. title === entityId)
+					const unresolved = destinations.value.filter(d => d.title === d.entityId);
+					if (unresolved.length === 0) return;
+					
+					// We need at least one valid session to query Telegram API
+					if (sessions.value.length === 0) return;
+					const sess = sessions.value[0]; // Use first session
+					
+					console.log(`Starting background channel name resolution for ${unresolved.length} entities...`);
+					
+					for (const dest of unresolved) {
+						try {
+							const res = await fetch('/api/verify-entity', {
+								method: 'POST',
+								headers: { 'Content-Type': 'application/json' },
+								body: JSON.stringify({
+									sessionString: sess.sessionString,
+									apiId: sess.apiId || newSession.apiId || undefined,
+									apiHash: sess.apiHash || newSession.apiHash || undefined,
+									entityId: dest.entityId,
+									proxy: sess.proxy || newSession.proxy || undefined
+								})
+							});
+							const data = await res.json();
+							if (res.ok && data.success) {
+								dest.title = data.title;
+								// Update in running tabs if they are using this destination
+								tabs.value.forEach(t => {
+									if (t.destination === dest.entityId && (!t.name || t.name === t.destination)) {
+										t.name = data.title;
+									}
+								});
+								saveState();
+								showToast(`目标群组「${data.title}」已自动获取更新！`, 'info');
+							}
+						} catch (e) {
+							console.warn(`Failed to resolve destination ${dest.entityId}:`, e.message);
+						}
+					}
+				};
+
+				// Modal helpers
+				const closeModals = () => {
+					Object.keys(modals).forEach(k => modals[k] = false);
+					// Reset forms
+					newSession.loading = false;
+					newSession.smsSent = false;
+					newSession.code = '';
+					newSession.password = '';
+					newTab.loading = false;
+					newTab.validationError = '';
+					newTab.selectedDestId = 'manual';
+					newTab.destination = '';
+					newTab.selectedSessionId = '';
+					newTab.startLink = '';
+					newDest.loading = false;
+					newDest.validationError = '';
+					newDest.entityId = '';
+					previewData.value = null;
+					previewVerdict.value = null;
+					pendingPreviewTab = null;
+				};
+
+				const openSessionModal = () => { modals.session = true; };
+				const openConfigModal = () => { modals.config = true; };
+				const openBackupModal = () => {
+					backupMessage.value = '';
+					const payload = {
+						sessions: sessions.value,
+						destinations: destinations.value,
+						commonConfig: commonConfig.value,
+						tabs: tabs.value.map(t => {
+							const { timerId, ...rest } = t;
+							return rest;
+						}),
+						regexHistory: regexHistory.value
+					};
+					backupText.value = JSON.stringify(payload, null, 2);
+					modals.backup = true;
+				};
+				const openAddTabModal = () => {
+					newTab.selectedSessionId = sessions.value.length ? sessions.value[0].id : '';
+					modals.addTab = true;
+				};
+
+				// Helpers for UI labels
+				const tabStatusLabel = (status) => {
+					const m = {
+						idle: '空闲就绪',
+						running: '自动转发中...',
+						paused: '暂停挂起',
+						error: '进程发生异常',
+						completed: '任务顺利完成'
+					};
+					return m[status] || status;
+				};
+
+				const mediaTypeLabel = (k) => {
+					const m = {
+						allowTextOnly: '纯文本消息',
+						allowPhoto: '图片 (Photo)',
+						allowVideo: '视频 (Video)',
+						allowDocument: '文件文档 (Files)',
+						allowSticker: '表情贴纸 (Stickers)',
+						allowAnimation: '动图 (GIFs)',
+						allowAudio: '音乐音频 (Audios)',
+						allowVoice: '语音消息 (Voices)'
+					};
+					return m[k] || k;
+				};
+
+				// Terminal utilities
+				const appendTabLog = (tab, level, message) => {
+					const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+					tab.logs.push({ timestamp, level, message });
+					
+					// Ensure terminal lists are clipped so they don't consume all memory
+					if (tab.logs.length > 1000) {
+						tab.logs.shift();
+					}
+
+					// Auto scroll to bottom
+					if (tab.scrollLock) {
+						nextTick(() => {
+							const el = document.getElementById(`terminal_${tab.id}`);
+							if (el) el.scrollTop = el.scrollHeight;
+						});
+					}
+				};
+
+				const clearTabLogs = (tab) => {
+					tab.logs = [];
+					appendTabLog(tab, 'Info', '终端控制面板已清空。');
+					saveState();
+				};
+
+				// Tab configurations
+				const resetTabConfigToDefault = (tab) => {
+					tab.config = JSON.parse(JSON.stringify(commonConfig.value));
+					appendTabLog(tab, 'Info', '当前标签页参数已重置为公共默认配置。');
+					saveState();
+				};
+
+				const resetTabProgress = (tab) => {
+					const parsed = parseTelegramLink(tab.startLink);
+					if (parsed) {
+						tab.currentId = parsed.messageId;
+						appendTabLog(tab, 'Info', `已同步区间起始 ID 为 #${parsed.messageId}`);
+						saveState();
+					} else {
+						alert('无法解析起始链接，无法重置进度！');
+					}
+				};
+
+				const manualSetProgress = (tab) => {
+					const id = prompt('请输入你要设置的目标消息 ID (数字):', tab.currentId || '');
+					if (id !== null) {
+						const num = parseInt(id, 10);
+						if (!isNaN(num)) {
+							tab.currentId = num;
+							appendTabLog(tab, 'Info', `手动重设转发进度 ID 为 #${num}`);
+							saveState();
+						} else {
+							alert('格式错误，必须为数字！');
+						}
+					}
+				};
+
+				const closeTab = (id) => {
+					const tab = tabs.value.find(t => t.id === id);
+					if (tab && tab.timerId) {
+						clearTimeout(tab.timerId);
+					}
+					
+					if (confirm('确认关闭并删除该标签页进程？所有关联日志、进度都会被清空。')) {
+						tabs.value = tabs.value.filter(t => t.id !== id);
+						if (activeTabId.value === id) {
+							activeTabId.value = tabs.value.length ? tabs.value[0].id : null;
+						}
+						saveState();
+					}
+				};
+
+				// Identity addition flows
+				const getTelegramSMSCode = async () => {
+					if (!newSession.phone.trim()) {
+						newSession.validationError = '请输入手机号码';
+						return;
+					}
+					newSession.loading = true;
+					newSession.validationError = '';
+					newSession.statusText = '正在请求 Telegram 发送登录验证码...';
+					try {
+						const res = await fetch('/api/auth/send-code', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								phone: newSession.phone.trim(),
+								apiId: newSession.apiId || undefined,
+								apiHash: newSession.apiHash || undefined,
+								proxy: newSession.proxy || undefined
+							})
+						});
+						const data = await res.json();
+						if (res.ok && data.success) {
+							newSession.smsSent = true;
+							newSession.phoneCodeHash = data.phoneCodeHash;
+							showToast('验证码已成功发至您的 Telegram 端，请在下方输入！', 'success');
+						} else {
+							newSession.validationError = '验证码发送失败: ' + (data.error || '未知网络错误');
+						}
+					} catch (e) {
+						newSession.validationError = '网络异常: ' + e.message;
+					} finally {
+						newSession.loading = false;
+						newSession.statusText = '';
+					}
+				};
+
+				const confirmAddIdentity = async () => {
+					newSession.loading = true;
+					newSession.validationError = '';
+					newSession.statusText = '正在建立与 Telegram 服务器的安全连接，请稍等数秒...';
+					try {
+						let endpoint = '';
+						let payload = {};
+
+						if (newSession.formType === 'telegram') {
+							endpoint = '/api/auth/sign-in';
+							payload = {
+								phone: newSession.phone.trim(),
+								code: newSession.code.trim(),
+								password: newSession.password ? newSession.password.trim() : undefined
+							};
+						} else if (newSession.formType === 'bot') {
+							endpoint = '/api/auth/verify-bot';
+							payload = {
+								botToken: newSession.botToken.trim(),
+								apiId: newSession.apiId || undefined,
+								apiHash: newSession.apiHash || undefined,
+								proxy: newSession.proxy || undefined
+							};
+						} else if (newSession.formType === 'string') {
+							if (!newSession.sessionString.trim() || !newSession.phone.trim()) {
+								newSession.loading = false;
+								newSession.validationError = '必须输入手机号和 Session String！';
+								return;
+							}
+							
+							const sName = newSession.name.trim() || `用户 (${newSession.phone.trim()})`;
+							sessions.value.push({
+								id: 'sess_' + Date.now(),
+								type: 'user',
+								name: sName,
+								phone: newSession.phone.trim(),
+								sessionString: newSession.sessionString.trim(),
+								apiId: newSession.apiId || undefined,
+								apiHash: newSession.apiHash || undefined,
+								proxy: newSession.proxy || undefined
+							});
+							
+							saveState();
+							closeModals();
+							showToast('Session 身份添加成功！', 'success');
+							return;
+						}
+
+						const res = await fetch(endpoint, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify(payload)
+						});
+						const data = await res.json();
+						
+						if (res.ok && data.success) {
+							sessions.value.push({
+								id: 'sess_' + Date.now(),
+								type: newSession.formType === 'bot' ? 'bot' : 'user',
+								name: data.name,
+								phone: newSession.formType === 'telegram' ? newSession.phone.trim() : undefined,
+								sessionString: data.sessionString,
+								apiId: newSession.apiId || undefined,
+								apiHash: newSession.apiHash || undefined,
+								proxy: newSession.proxy || undefined
+							});
+							
+							saveState();
+							closeModals();
+							showToast('身份账号验证并保存成功！', 'success');
+						} else {
+							newSession.validationError = '账号登录失败: ' + (data.error || '未知错误');
+						}
+					} catch (err) {
+						newSession.validationError = '请求失败: ' + err.message;
+					} finally {
+						newSession.loading = false;
+						newSession.statusText = '';
+					}
+				};
+
+				const deleteSession = (id) => {
+					if (confirm('确定移除该登录身份？移除后使用该账号的转发进程可能会中断。')) {
+						sessions.value = sessions.value.filter(s => s.id !== id);
+						saveState();
+					}
+				};
+
+				// Public Config Saves
+				const saveCommonConfig = () => {
+					saveState();
+					closeModals();
+					alert('全局默认配置保存成功！');
+				};
+
+				// New Tab Creations
+				const confirmCreateTab = async () => {
+					newTab.validationError = '';
+					
+					let destId = '';
+					let destTitle = '';
+					
+					if (newTab.selectedDestId === 'manual') {
+						if (!newTab.destination.trim()) return newTab.validationError = '请输入目标群组/频道';
+						destId = newTab.destination.trim();
+					} else {
+						const saved = destinations.value.find(d => d.id === newTab.selectedDestId);
+						if (!saved) return newTab.validationError = '选择的共享目的地无效';
+						destId = saved.entityId;
+						destTitle = saved.title;
+					}
+					
+					if (!newTab.selectedSessionId) return newTab.validationError = '请选择登录账号';
+					if (!newTab.startLink.trim()) return newTab.validationError = '请输入起始消息链接';
+
+					const parsedStart = parseTelegramLink(newTab.startLink);
+					if (!parsedStart) return newTab.validationError = '起始消息链接格式错误，请输入正确的电报消息链接！';
+
+					newTab.loading = true;
+					newTab.statusText = '正在与 Telegram 通信，安全校验目的地与起始消息连通性...';
+					try {
+						const sess = sessions.value.find(s => s.id === newTab.selectedSessionId);
+						if (!sess) throw new Error('账号不可用');
+
+						// 1. Verify Destination Entity
+						const res = await fetch('/api/verify-entity', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								sessionString: sess.sessionString,
+								apiId: sess.apiId || newSession.apiId || undefined,
+								apiHash: sess.apiHash || newSession.apiHash || undefined,
+								entityId: destId,
+								proxy: sess.proxy || newSession.proxy || undefined
+							})
+						});
+						const data = await res.json();
+						if (!res.ok || !data.success) {
+							throw new Error('验证目标目的地失败: ' + (data.error || '无法获取实体信息'));
+						}
+
+						destTitle = data.title;
+
+						// 2. Verify Source Message & Parse Channel
+						const previewRes = await fetch('/api/preview', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								sessionString: sess.sessionString,
+								apiId: sess.apiId || newSession.apiId || undefined,
+								apiHash: sess.apiHash || newSession.apiHash || undefined,
+								sourceChat: parsedStart.chatId,
+								messageId: parsedStart.messageId,
+								proxy: sess.proxy || newSession.proxy || undefined,
+								config: commonConfig.value
+							})
+						});
+						const previewDataFetched = await previewRes.json();
+						if (!previewRes.ok || !previewDataFetched.success) {
+							throw new Error('验证并拉取起始消息失败: ' + (previewDataFetched.error || '无法访问该起始消息'));
+						}
+							
+						// Auto save to shared destinations list if manual and not already saved
+						if (newTab.selectedDestId === 'manual') {
+							const exists = destinations.value.some(d => d.entityId === destId);
+							if (!exists) {
+								destinations.value.push({
+									id: 'dest_' + Date.now(),
+									title: destTitle,
+									entityId: destId
+								});
+							}
+						}
+						
+						const newId = 'tab_' + Date.now();
+						const newTabObj = {
+							id: newId,
+							name: destTitle,
+							destination: destId,
+							selectedSessionId: newTab.selectedSessionId,
+							sourceChat: parsedStart.chatId,
+							startLink: newTab.startLink.trim(),
+							endLink: '',
+							currentId: parsedStart.messageId,
+							targetEndId: null,
+							consecutiveFailures: 0,
+							successCount: 0,
+							status: 'idle',
+							logs: [],
+							scrollLock: true,
+							showAdvanced: false,
+							excludeTestStr: '',
+							includeTestStr: '',
+							activeDropdown: null,
+							previewData: previewDataFetched.message,
+							previewVerdict: previewDataFetched.verdict || { shouldForward: true, reason: '' },
+							config: JSON.parse(JSON.stringify(commonConfig.value))
+						};
+						
+						tabs.value.push(newTabObj);
+						activeTabId.value = newId;
+						
+						// Init log inside tab
+						nextTick(() => {
+							appendTabLog(newTabObj, 'Info', `进程标签页「${destTitle}」已开辟成功！`);
+							appendTabLog(newTabObj, 'Info', `目标群组/频道: ${destTitle} (ID: ${data.id})`);
+							appendTabLog(newTabObj, 'Info', `源频道已成功解析为: ${parsedStart.chatId}`);
+							
+							const textSnippet = previewDataFetched.message.text ? ` "${previewDataFetched.message.text.substring(0, 30).trim()}..."` : "";
+							appendTabLog(newTabObj, 'Success', `[起始消息校验通过] 格式: ${previewDataFetched.message.type}, 内容: ${textSnippet}`);
+						});
+						
+						saveState();
+						closeModals();
+						showToast(`转发进程「${destTitle}」已安全解析并创建！`, 'success');
+
+					} catch (e) {
+						newTab.validationError = e.message;
+					} finally {
+						newTab.loading = false;
+						newTab.statusText = '';
+					}
+				};
+
+				// Shared Destinations Management
+				const confirmAddDestination = async () => {
+					newDest.validationError = '';
+					if (!newDest.entityId.trim()) return newDest.validationError = '请输入目标群组/频道 ID/Username';
+					if (!newDest.selectedSessionId) return newDest.validationError = '请选择验证会话账号';
+
+					newDest.loading = true;
+					newDest.statusText = '正在与 Telegram 进行安全握手，验证该目的地实体合法性与访问权限...';
+					try {
+						const sess = sessions.value.find(s => s.id === newDest.selectedSessionId);
+						if (!sess) throw new Error('账号不可用');
+
+						const res = await fetch('/api/verify-entity', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								sessionString: sess.sessionString,
+								apiId: sess.apiId || newSession.apiId || undefined,
+								apiHash: sess.apiHash || newSession.apiHash || undefined,
+								entityId: newDest.entityId.trim(),
+								proxy: sess.proxy || newSession.proxy || undefined
+							})
+						});
+						const data = await res.json();
+						
+						if (res.ok && data.success) {
+							const exists = destinations.value.some(d => d.entityId === data.id || d.entityId === newDest.entityId.trim());
+							if (!exists) {
+								destinations.value.push({
+									id: 'dest_' + Date.now(),
+									title: data.title,
+									entityId: newDest.entityId.trim()
+								});
+								saveState();
+								newDest.entityId = '';
+								showToast(`目标目的地「${data.title}」验证成功，已加入共享池！`, 'success');
+							} else {
+								showToast('该目标目的地已存在于共享列表中！', 'warn');
+							}
+						} else {
+							newDest.validationError = '验证失败: ' + (data.error || '无法获取实体信息');
+						}
+					} catch (e) {
+						newDest.validationError = '请求错误: ' + e.message;
+					} finally {
+						newDest.loading = false;
+						newDest.statusText = '';
+					}
+				};
+
+				const deleteDestination = (id) => {
+					if (confirm('确定移除该共享目的地？这不会影响已开辟的 Tab 进度，但在新建会话时该选择将不再可见。')) {
+						destinations.value = destinations.value.filter(d => d.id !== id);
+						saveState();
+					}
+				};
+
+				// Multi-select Regex Tag Helpers
+				const addRegexTag = (tab, key, newTagVal) => {
+					if (!newTagVal || !newTagVal.trim()) return;
+					const currentTags = tab.config.filters.text[key] ? tab.config.filters.text[key].split('|').filter(x => x) : [];
+					if (!currentTags.includes(newTagVal.trim())) {
+						currentTags.push(newTagVal.trim());
+						tab.config.filters.text[key] = currentTags.join('|');
+						saveState();
+						showToast(`选项「${newTagVal.trim()}」已加入规则！`, 'success');
+					}
+				};
+
+				const removeRegexTag = (tab, key, tagToRemove) => {
+					const currentTags = tab.config.filters.text[key] ? tab.config.filters.text[key].split('|').filter(x => x) : [];
+					const updated = currentTags.filter(t => t !== tagToRemove);
+					tab.config.filters.text[key] = updated.join('|');
+					saveState();
+					showToast('过滤规则已更新！', 'info');
+				};
+
+				const syncRegexToCommon = (tab, key) => {
+					commonConfig.value.filters.text[key] = tab.config.filters.text[key];
+					saveState();
+					showToast(`已成功将当前进程的${key === 'excludeRegex' ? '排除' : '包含'}规则覆盖并同步为全局默认配置！`, 'success');
+				};
+
+				const scrollToTop = (tabId) => {
+					nextTick(() => {
+						const el = document.getElementById(`terminal_${tabId}`);
+						if (el) el.scrollTop = 0;
+					});
+				};
+
+				const scrollToBottom = (tabId) => {
+					nextTick(() => {
+						const el = document.getElementById(`terminal_${tabId}`);
+						if (el) el.scrollTop = el.scrollHeight;
+					});
+				};
+
+				const updateUpcomingPreview = async (tab) => {
+					if (!tab.selectedSessionId || !tab.sourceChat || !tab.currentId) return;
+					const sess = sessions.value.find(s => s.id === tab.selectedSessionId);
+					if (!sess) return;
+					
+					try {
+						const res = await fetch('/api/preview', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								sessionString: sess.sessionString,
+								apiId: sess.apiId || newSession.apiId || undefined,
+								apiHash: sess.apiHash || newSession.apiHash || undefined,
+								sourceChat: tab.sourceChat.trim(),
+								messageId: tab.currentId,
+								proxy: sess.proxy || newSession.proxy || undefined,
+								config: tab.config
+							})
+						});
+						const data = await res.json();
+						if (res.ok && data.success) {
+							tab.previewData = data.message;
+							tab.previewVerdict = data.verdict || { shouldForward: true, reason: '' };
+							saveState();
+						}
+					} catch (e) {
+						console.warn("Silent preview update failed:", e.message);
+					}
+				};
+
+				// Import/Export configuration backups
+				const backupCopied = ref(false);
+				const exportToClipboard = async () => {
+					try {
+						await navigator.clipboard.writeText(backupText.value);
+						backupCopied.value = true;
+						backupMessage.value = '全部配置已成功复制到剪切板 ✓';
+						setTimeout(() => {
+							backupCopied.value = false;
+						}, 2000);
+					} catch (e) {
+						backupMessage.value = '复制失败，请手动右键选择文本全选复制。';
+					}
+				};
+
+				const importFromClipboard = () => {
+					try {
+						const data = JSON.parse(backupText.value);
+						if (!data.sessions || !data.commonConfig || !data.tabs) {
+							return alert('解析失败：JSON 结构不符合 telegram_forwarder 备份规范。');
+						}
+						
+						if (confirm('确认导入？当前浏览器的所有数据将被此备份内容完全覆盖，重载网页。')) {
+							sessions.value = data.sessions;
+							if (data.destinations) destinations.value = data.destinations;
+							commonConfig.value = data.commonConfig;
+							tabs.value = data.tabs.map(t => ({
+								...t,
+								timerId: null,
+								activeDropdown: null,
+								scrollLock: t.scrollLock !== undefined ? t.scrollLock : true,
+								excludeTestStr: t.excludeTestStr || '',
+								includeTestStr: t.includeTestStr || '',
+								showAdvanced: t.showAdvanced !== undefined ? t.showAdvanced : false
+							}));
+							if (data.regexHistory) regexHistory.value = data.regexHistory;
+							
+							activeTabId.value = tabs.value.length ? tabs.value[0].id : null;
+							saveState();
+							closeModals();
+							window.location.reload();
+						}
+					} catch (e) {
+						alert('解析备份失败，格式非有效JSON字符: ' + e.message);
+					}
+				};
+
+				// RegEx matching helper and testers
+				const testRegexResult = (regexStr, testStr) => {
+					if (!regexStr || !testStr) return false;
+					try {
+						const r = new RegExp(regexStr, 'i');
+						return r.test(testStr);
+					} catch (e) {
+						return false;
+					}
+				};
+
+				const saveToHistory = (reg) => {
+					if (!reg || !reg.trim()) return;
+					const r = reg.trim();
+					if (!regexHistory.value.includes(r)) {
+						regexHistory.value.unshift(r);
+						if (regexHistory.value.length > 10) regexHistory.value.pop();
+						saveState();
+					}
+				};
+
+				const toggleHistoryDropdown = (tab, type) => {
+					tab.activeDropdown = tab.activeDropdown === type ? null : type;
+				};
+
+				const applyRegex = (tab, targetKey, regValue) => {
+					tab.config.filters.text[targetKey] = regValue;
+					tab.activeDropdown = null;
+					saveState();
+				};
+
+				// Link Parser helper
+				const parseTelegramLink = (link) => {
+					if (!link) return null;
+					const cleanLink = link.trim();
+					const privateMatch = cleanLink.match(/https?:\/\/t\.me\/c\/(\d+)\/(\d+)/);
+					if (privateMatch) {
+						return {
+							chatId: `-100${privateMatch[1]}`,
+							messageId: parseInt(privateMatch[2], 10)
+						};
+					}
+					const publicMatch = cleanLink.match(/https?:\/\/t\.me\/([a-zA-Z0-9_]+)\/(\d+)/);
+					if (publicMatch) {
+						return {
+							chatId: `@${publicMatch[1]}`,
+							messageId: parseInt(publicMatch[2], 10)
+						};
+					}
+					return null;
+				};
+
+				// Message Previews
+				const triggerPreview = async (tab) => {
+					if (!tab.selectedSessionId) return alert('请先配置该标签页的执行账号！');
+					if (!tab.sourceChat) return alert('请输入源频道 ID/Username！');
+					if (!tab.startLink) return alert('请输入起始消息链接！');
+
+					const parsedStart = parseTelegramLink(tab.startLink);
+					if (!parsedStart) return alert('起始消息链接格式错误，请检查！');
+					
+					tab.currentId = parsedStart.messageId;
+
+					// Check End message link if present
+					if (tab.endLink.trim()) {
+						const parsedEnd = parseTelegramLink(tab.endLink);
+						if (!parsedEnd) return alert('结束消息链接格式错误，请检查或留空！');
+						if (parsedEnd.chatId !== parsedStart.chatId) return alert('结束频道与起始频道不一致！');
+						tab.targetEndId = parsedEnd.messageId;
+					} else {
+						tab.targetEndId = null;
+					}
+
+					tab.previewLoading = true;
+					// Invoke API for Preview data
+					try {
+						const sess = sessions.value.find(s => s.id === tab.selectedSessionId);
+						if (!sess) {
+							tab.previewLoading = false;
+							return alert('账号未配置');
+						}
+
+						appendTabLog(tab, 'Info', `正在拉取预览数据: 起始消息 ID #${tab.currentId}...`);
+						
+						const res = await fetch('/api/preview', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								sessionString: sess.sessionString,
+								apiId: sess.apiId || newSession.apiId || undefined,
+								apiHash: sess.apiHash || newSession.apiHash || undefined,
+								sourceChat: tab.sourceChat.trim(),
+								messageId: tab.currentId,
+								proxy: sess.proxy || newSession.proxy || undefined,
+								config: tab.config
+							})
+						});
+						const data = await res.json();
+						
+						if (res.ok && data.success) {
+							tab.previewData = data.message;
+							tab.previewVerdict = data.verdict || { shouldForward: true, reason: '' };
+							
+							previewData.value = data.message;
+							previewVerdict.value = tab.previewVerdict;
+							pendingPreviewTab = tab;
+							
+							modals.preview = true;
+							showToast('起始消息拉取并校验成功！', 'success');
+						} else {
+							alert('拉取预览失败: ' + (data.error || '请确认源消息存在且你的账号具有访问权限。'));
+						}
+					} catch (e) {
+						alert('请求故障: ' + e.message);
+					} finally {
+						tab.previewLoading = false;
+					}
+				};
+
+				// Starts forwarding after successful preview verification
+				const confirmStartAfterPreview = () => {
+					if (pendingPreviewTab) {
+						closeModals();
+						startForwarding(pendingPreviewTab);
+					}
+				};
+
+				// Client-side driven stateless forwarding loop scheduler
+				const runForwardLoop = async (tab) => {
+					if (tab.status !== 'running') return;
+
+					// Check if reached destination limit
+					if (tab.targetEndId && tab.currentId > tab.targetEndId) {
+						tab.status = 'completed';
+						appendTabLog(tab, 'Success', `🎉 已成功跑完您设定的终点消息区间至 #${tab.targetEndId}，转发结束！`);
+						saveState();
+						return;
+					}
+
+					const sess = sessions.value.find(s => s.id === tab.selectedSessionId);
+					if (!sess) {
+						tab.status = 'error';
+						appendTabLog(tab, 'Error', '未找到有效的执行身份，任务挂起。');
+						saveState();
+						return;
+					}
+
+					// Add a 15-second timeout controller to handle network hangs / disconnects
+					const controller = new AbortController();
+					const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+					try {
+						const payload = {
+							tabId: tab.id,
+							tabName: tab.name,
+							sessionString: sess.sessionString,
+							apiId: sess.apiId || newSession.apiId || undefined,
+							apiHash: sess.apiHash || newSession.apiHash || undefined,
+							proxy: sess.proxy || newSession.proxy || undefined,
+							sourceChat: tab.sourceChat.trim(),
+							currentId: tab.currentId,
+							destChats: [tab.destination],
+							config: tab.config
+						};
+
+						const response = await fetch('/api/forward', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify(payload),
+							signal: controller.signal
+						});
+						
+						clearTimeout(timeoutId);
+						const data = await response.json();
+						
+						// Dump logs returned by backend single-step
+						if (data.logs && data.logs.length) {
+							data.logs.forEach(l => appendTabLog(tab, l.level, l.message));
+						}
+
+						if (response.ok && data.success) {
+							if (data.empty) {
+								tab.consecutiveFailures = (tab.consecutiveFailures || 0) + 1;
+								appendTabLog(tab, 'Warn', `消息 #${tab.currentId} 为空。连续空进度: ${tab.consecutiveFailures}/${tab.config.settings.maxConsecutiveFailures}`);
+								
+								if (tab.consecutiveFailures >= tab.config.settings.maxConsecutiveFailures) {
+									tab.status = 'completed';
+									appendTabLog(tab, 'Warn', `⚠️ 已连续 ${tab.config.settings.maxConsecutiveFailures} 条空进度，系统判定到达频道最新消息，自动结束。`);
+								} else {
+									tab.currentId = data.nextId;
+								}
+							} else {
+								tab.consecutiveFailures = 0;
+								tab.successCount += (data.successCount || 1);
+								tab.currentId = data.nextId;
+							}
+						} else {
+							tab.status = 'error';
+							appendTabLog(tab, 'Error', `单步操作 API 回报异常: ${data.error || '未知网络服务异常'}`);
+						}
+					} catch (err) {
+						clearTimeout(timeoutId);
+						tab.status = 'error';
+						if (err.name === 'AbortError') {
+							appendTabLog(tab, 'Error', `⚠️ 请求超时 (已超过 15 秒无响应限制)，网络可能已断开，转发任务中断！`);
+						} else {
+							appendTabLog(tab, 'Error', `连接服务器失败: ${err.message}`);
+						}
+					}
+
+					saveState();
+
+					// Schedule next step if still running
+					if (tab.status === 'running') {
+						const delay = tab.config.settings.delayMs || 1500;
+						const [min, max] = tab.config.settings.jitterRange || [0.95, 1.45];
+						const jitter = Math.random() * (max - min) + min;
+						const finalDelay = Math.round(delay * jitter);
+						
+						tab.timerId = setTimeout(() => runForwardLoop(tab), finalDelay);
+					}
+				};
+
+				const startForwarding = (tab) => {
+					if (!tab.selectedSessionId) return alert('请先配置执行身份账号！');
+					if (!tab.sourceChat) return alert('请输入源频道！');
+					
+					if (tab.currentId === null) {
+						const parsedStart = parseTelegramLink(tab.startLink);
+						if (!parsedStart) return alert('起始消息链接格式错误！请先运行 消息预览 或填写正确的起始地址。');
+						tab.currentId = parsedStart.messageId;
+					}
+
+					tab.status = 'running';
+					appendTabLog(tab, 'Info', '▶️ 自动转发任务进程开启...');
+					saveState();
+					
+					runForwardLoop(tab);
+				};
+
+				const pauseForwarding = (tab) => {
+					tab.status = 'paused';
+					if (tab.timerId) {
+						clearTimeout(tab.timerId);
+						tab.timerId = null;
+					}
+					appendTabLog(tab, 'Warn', '⏸️ 自动转发进程已手动暂停挂起。');
+					
+					// Automatically refresh the preview card for the currentId in background
+					updateUpcomingPreview(tab);
+					
+					saveState();
+				};
+
+				// Timestamp formatter
+				const formatTimestamp = (date) => {
+					if (!date) return '';
+					const d = new Date(date * 1000);
+					return d.toLocaleString();
+				};
+
+				onMounted(() => {
+					loadState();
+				});
+
+				return {
+					toasts,
+					showToast,
+					sessions,
+					destinations,
+					sessionModalTab,
+					newDest,
+					tabs,
+					activeTabId,
+					currentTab,
+					commonConfig,
+					modals,
+					newSession,
+					newTab,
+					regexHistory,
+					backupText,
+					backupMessage,
+					previewData,
+					previewVerdict,
+					
+					// Methods
+					openSessionModal,
+					openConfigModal,
+					openBackupModal,
+					openAddTabModal,
+					closeModals,
+					tabStatusLabel,
+					mediaTypeLabel,
+					appendTabLog,
+					clearTabLogs,
+					resetTabConfigToDefault,
+					resetTabProgress,
+					manualSetProgress,
+					closeTab,
+					getTelegramSMSCode,
+					confirmAddIdentity,
+					deleteSession,
+					saveCommonConfig,
+					confirmCreateTab,
+					confirmAddDestination,
+					deleteDestination,
+					resolveDestinationNames,
+					addRegexTag,
+					removeRegexTag,
+					syncRegexToCommon,
+					scrollToTop,
+					scrollToBottom,
+					updateUpcomingPreview,
+					backupCopied,
+					exportToClipboard,
+					importFromClipboard,
+					testRegexResult,
+					saveToHistory,
+					toggleHistoryDropdown,
+					applyRegex,
+					triggerPreview,
+					confirmStartAfterPreview,
+					startForwarding,
+					pauseForwarding,
+					formatTimestamp,
+					saveState
+				};
+			}
+		}).mount('#app');
+	</script>
+</body>
+</html>

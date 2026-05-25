@@ -294,6 +294,24 @@
 										<option value="media">仅转发多媒体评论</option>
 									</select>
 								</div>
+
+								<!-- Auto Retry Configuration -->
+								<div class="pt-1.5 border-t border-slate-100 space-y-2">
+									<div class="flex items-center justify-between">
+										<span class="text-xs font-semibold text-slate-600">进程异常自动重试</span>
+										<input type="checkbox" v-model="tab.config.settings.autoRetry.enabled" class="rounded border-slate-300 text-sky-500 focus:ring-sky-500 h-4 w-4">
+									</div>
+									<div v-if="tab.config.settings.autoRetry.enabled" class="grid grid-cols-2 gap-3 pt-0.5">
+										<div>
+											<label class="block text-[10px] font-semibold text-slate-500 mb-0.5">最大重试次数</label>
+											<input type="number" v-model.number="tab.config.settings.autoRetry.maxAttempts" min="1" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none">
+										</div>
+										<div>
+											<label class="block text-[10px] font-semibold text-slate-500 mb-0.5">间隔时间(秒，逗号分隔)</label>
+											<input type="text" v-model="tab.config.settings.autoRetry.intervalsStr" @input="tab.config.settings.autoRetry.intervals = tab.config.settings.autoRetry.intervalsStr.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x))" placeholder="30, 120, 600" class="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none">
+										</div>
+									</div>
+								</div>
 							</div>
 						</div>
 
@@ -323,23 +341,38 @@
 										<span>排除正则表达式 (黑名单)</span>
 									</span>
 									<div class="flex items-center space-x-1.5">
-										<!-- Save to Default -->
-										<button @click="syncRegexToCommon(tab, 'excludeRegex')" title="将当前排除配置同步为系统默认，后续新建进程将自动继承" class="text-[10px] text-sky-500 font-semibold hover:underline">设为默认</button>
+										<!-- Info -->
+										<span class="cursor-help text-xs" title="过滤引擎执行次序：白名单优先。当包含（白名单）和排除（黑名单）规则同时存在时，系统会优先匹配白名单挑选放行消息，再对其执行黑名单规则进行二次精细化排除拦截。">ℹ️</span>
+										<span class="text-slate-300 text-[10px]">|</span>
+										<!-- Undo -->
+										<button @click="undoRegex(tab, 'excludeRegex')" :disabled="!canUndoRegex(tab, 'excludeRegex')" class="text-xs transition active:scale-95 transform disabled:opacity-30 disabled:cursor-not-allowed font-medium" title="↩️ 撤销修改">↩️</button>
+										<!-- Redo -->
+										<button @click="redoRegex(tab, 'excludeRegex')" :disabled="!canRedoRegex(tab, 'excludeRegex')" class="text-xs transition active:scale-95 transform disabled:opacity-30 disabled:cursor-not-allowed font-medium" title="↪️ 重做修改">↪️</button>
 										<span class="text-slate-300 text-[10px]">|</span>
 										<!-- History -->
 										<div class="relative inline-block text-left">
-											<button @click="toggleHistoryDropdown(tab, 'exclude')" class="text-slate-400 hover:text-slate-600" title="常用历史">
+											<button @click="toggleHistoryDropdown(tab, 'exclude')" class="text-slate-400 hover:text-slate-600 flex items-center justify-center" title="常用历史">
 												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 												</svg>
 											</button>
-											<div v-if="tab.activeDropdown === 'exclude'" class="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 z-10 py-1 max-h-48 overflow-y-auto">
-												<a v-for="h in regexHistory" :key="h" @click="applyRegex(tab, 'excludeRegex', h)" class="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 cursor-pointer truncate">{{ h }}</a>
+											<div v-if="tab.activeDropdown === 'exclude'" class="absolute right-0 mt-1 w-72 bg-white rounded-lg shadow-lg border border-slate-200 z-10 py-1 max-h-48 overflow-y-auto">
+												<div v-for="h in regexHistory" :key="h" @click="applyRegex(tab, 'excludeRegex', h)" class="group flex items-center justify-between px-3 py-1.5 hover:bg-slate-100 cursor-pointer text-xs text-slate-700">
+													<span class="truncate hover:whitespace-normal hover:break-all flex-1" :title="h">{{ h }}</span>
+													<button @click.stop="removeHistoryItem(h)" title="删除此历史项" class="ml-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition duration-150 p-0.5 rounded hover:bg-slate-200 shrink-0">
+														<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+														</svg>
+													</button>
+												</div>
 												<span v-if="regexHistory.length === 0" class="block px-3 py-1.5 text-xs text-slate-400">暂无历史记录</span>
 											</div>
 										</div>
 										<span class="text-slate-300 text-[10px]">|</span>
-										<button @click="tab.config.filters.text.excludeRegex = ''; saveState();" class="text-xs text-red-500 hover:underline">清空</button>
+										<!-- Save to Default -->
+										<button @click="syncRegexToCommon(tab, 'excludeRegex')" title="📌 同步为默认：将当前配置同步为系统默认，后续新建进程将自动继承" class="text-xs transition active:scale-95 transform">📌</button>
+										<!-- Clear -->
+										<button @click="clearRegex(tab, 'excludeRegex')" title="🗑️ 清空规则" class="text-xs transition active:scale-95 transform">🗑️</button>
 									</div>
 								</div>
 								
@@ -381,23 +414,38 @@
 										<span>包含正则表达式 (白名单)</span>
 									</span>
 									<div class="flex items-center space-x-1.5">
-										<!-- Save to Default -->
-										<button @click="syncRegexToCommon(tab, 'includeRegex')" title="将当前包含配置同步为系统默认，后续新建进程将自动继承" class="text-[10px] text-sky-500 font-semibold hover:underline">设为默认</button>
+										<!-- Info -->
+										<span class="cursor-help text-xs" title="过滤引擎执行次序：白名单优先。当包含（白名单）和排除（黑名单）规则同时存在时，系统会优先匹配白名单挑选放行消息，再对其执行黑名单规则进行二次精细化排除拦截。">ℹ️</span>
+										<span class="text-slate-300 text-[10px]">|</span>
+										<!-- Undo -->
+										<button @click="undoRegex(tab, 'includeRegex')" :disabled="!canUndoRegex(tab, 'includeRegex')" class="text-xs transition active:scale-95 transform disabled:opacity-30 disabled:cursor-not-allowed font-medium" title="↩️ 撤销修改">↩️</button>
+										<!-- Redo -->
+										<button @click="redoRegex(tab, 'includeRegex')" :disabled="!canRedoRegex(tab, 'includeRegex')" class="text-xs transition active:scale-95 transform disabled:opacity-30 disabled:cursor-not-allowed font-medium" title="↪️ 重做修改">↪️</button>
 										<span class="text-slate-300 text-[10px]">|</span>
 										<!-- History -->
 										<div class="relative inline-block text-left">
-											<button @click="toggleHistoryDropdown(tab, 'include')" class="text-slate-400 hover:text-slate-600" title="常用历史">
+											<button @click="toggleHistoryDropdown(tab, 'include')" class="text-slate-400 hover:text-slate-600 flex items-center justify-center" title="常用历史">
 												<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
 												</svg>
 											</button>
-											<div v-if="tab.activeDropdown === 'include'" class="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 z-10 py-1 max-h-48 overflow-y-auto">
-												<a v-for="h in regexHistory" :key="h" @click="applyRegex(tab, 'includeRegex', h)" class="block px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 cursor-pointer truncate">{{ h }}</a>
+											<div v-if="tab.activeDropdown === 'include'" class="absolute right-0 mt-1 w-72 bg-white rounded-lg shadow-lg border border-slate-200 z-10 py-1 max-h-48 overflow-y-auto">
+												<div v-for="h in regexHistory" :key="h" @click="applyRegex(tab, 'includeRegex', h)" class="group flex items-center justify-between px-3 py-1.5 hover:bg-slate-100 cursor-pointer text-xs text-slate-700">
+													<span class="truncate hover:whitespace-normal hover:break-all flex-1" :title="h">{{ h }}</span>
+													<button @click.stop="removeHistoryItem(h)" title="删除此历史项" class="ml-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition duration-150 p-0.5 rounded hover:bg-slate-200 shrink-0">
+														<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+														</svg>
+													</button>
+												</div>
 												<span v-if="regexHistory.length === 0" class="block px-3 py-1.5 text-xs text-slate-400">暂无历史记录</span>
 											</div>
 										</div>
 										<span class="text-slate-300 text-[10px]">|</span>
-										<button @click="tab.config.filters.text.includeRegex = ''; saveState();" class="text-xs text-red-500 hover:underline">清空</button>
+										<!-- Save to Default -->
+										<button @click="syncRegexToCommon(tab, 'includeRegex')" title="📌 同步为默认：将当前配置同步为系统默认，后续新建进程将自动继承" class="text-xs transition active:scale-95 transform">📌</button>
+										<!-- Clear -->
+										<button @click="clearRegex(tab, 'includeRegex')" title="🗑️ 清空规则" class="text-xs transition active:scale-95 transform">🗑️</button>
 									</div>
 								</div>
 								
@@ -442,12 +490,6 @@
 								</div>
 							</div>
 
-						</div>
-
-						<!-- Evaluation logic description notice with hover icon carrier -->
-						<div v-show="tab.showAdvanced" class="mt-4 bg-slate-50 border border-slate-150 p-3.5 rounded-xl flex items-start space-x-2 text-xs text-slate-500 max-w-4xl hover:shadow-sm transition select-none" title="提示：白名单优先过滤。当白名单（包含正则）与黑名单（排除正则）条件同时存在时，系统将优先根据白名单过滤并选出符合要求的消息，随后对选出的消息运行黑名单逻辑，剔除掉匹配排除正则的过滤项。">
-							<span class="text-sky-500 font-bold text-sm shrink-0 leading-none cursor-help" title="点击可查看提示说明">ℹ️</span>
-							<span class="leading-relaxed"><strong>过滤引擎执行次序：</strong>白名单优先。当包含（白名单）和排除（黑名单）规则同时存在时，系统会<strong>优先匹配白名单</strong>挑选放行消息，<strong>再对其执行黑名单规则</strong>进行二次精细化排除拦截。</span>
 						</div>
 					</div>
 
@@ -899,6 +941,24 @@
 						</div>
 					</div>
 
+					<!-- Defaults: Auto Retry -->
+					<div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+						<div class="flex items-center justify-between">
+							<h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">默认进程异常自动重试</h4>
+							<input type="checkbox" v-model="commonConfig.settings.autoRetry.enabled" class="rounded text-sky-500 h-4 w-4">
+						</div>
+						<div v-if="commonConfig.settings.autoRetry.enabled" class="grid grid-cols-2 gap-3">
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">默认最大重试次数</label>
+								<input type="number" v-model.number="commonConfig.settings.autoRetry.maxAttempts" min="1" class="w-full bg-white border border-slate-200 rounded px-2.5 py-1.5 text-xs focus:outline-none">
+							</div>
+							<div>
+								<label class="block text-xs font-semibold text-slate-600 mb-1">默认间隔时间 (秒，逗号分隔)</label>
+								<input type="text" v-model="commonConfig.settings.autoRetry.intervalsStr" @input="commonConfig.settings.autoRetry.intervals = commonConfig.settings.autoRetry.intervalsStr.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x))" placeholder="30, 120, 600" class="w-full bg-white border border-slate-200 rounded px-2.5 py-1.5 text-xs focus:outline-none">
+							</div>
+						</div>
+					</div>
+
 					<!-- Defaults: Media Types -->
 					<div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
 						<h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">默认放行媒体格式</h4>
@@ -1192,6 +1252,12 @@
 						comments: {
 							enabled: true,
 							mode: 'media'
+						},
+						autoRetry: {
+							enabled: true,
+							maxAttempts: 3,
+							intervals: [30, 120, 600],
+							intervalsStr: '30, 120, 600'
 						}
 					}
 				});
@@ -1265,9 +1331,10 @@
 
 				// Save state to localStorage
 				const saveState = () => {
+					updateRegexHistoryFromTabs();
 					const sanitizedTabs = tabs.value.map(t => {
 						// Clean runtime objects from persistence
-						const { timerId, activeDropdown, ...rest } = t;
+						const { timerId, activeDropdown, undoStackExclude, redoStackExclude, undoStackInclude, redoStackInclude, ...rest } = t;
 						return {
 							...rest,
 							// Pause active tabs on reload to avoid ghost triggers
@@ -1292,23 +1359,70 @@
 					if (storedDestinations) destinations.value = JSON.parse(storedDestinations);
 
 					const storedCommon = localStorage.getItem('telegram_forwarder_common_config');
-					if (storedCommon) commonConfig.value = JSON.parse(storedCommon);
+					if (storedCommon) {
+						const parsed = JSON.parse(storedCommon);
+						if (!parsed.settings) parsed.settings = {};
+						if (!parsed.settings.autoRetry) {
+							parsed.settings.autoRetry = {
+								enabled: true,
+								maxAttempts: 3,
+								intervals: [30, 120, 600],
+								intervalsStr: '30, 120, 600'
+							};
+						} else {
+							if (parsed.settings.autoRetry.enabled === undefined) parsed.settings.autoRetry.enabled = true;
+							if (parsed.settings.autoRetry.maxAttempts === undefined) parsed.settings.autoRetry.maxAttempts = 3;
+							if (!parsed.settings.autoRetry.intervals) parsed.settings.autoRetry.intervals = [30, 120, 600];
+							if (!parsed.settings.autoRetry.intervalsStr) parsed.settings.autoRetry.intervalsStr = parsed.settings.autoRetry.intervals.join(', ');
+						}
+						commonConfig.value = parsed;
+					} else {
+						// Set defaults on first launch
+						commonConfig.value.settings.autoRetry = {
+							enabled: true,
+							maxAttempts: 3,
+							intervals: [30, 120, 600],
+							intervalsStr: '30, 120, 600'
+						};
+					}
 
 					const storedHistory = localStorage.getItem('telegram_forwarder_regex_history');
 					if (storedHistory) regexHistory.value = JSON.parse(storedHistory);
 
 					const storedTabs = localStorage.getItem('telegram_forwarder_tabs');
 					if (storedTabs) {
-						tabs.value = JSON.parse(storedTabs).map(t => ({
-							...t,
-							timerId: null,
-							activeDropdown: null,
-							scrollLock: t.scrollLock !== undefined ? t.scrollLock : true,
-							excludeTestStr: t.excludeTestStr || '',
-							includeTestStr: t.includeTestStr || '',
-							showAdvanced: t.showAdvanced !== undefined ? t.showAdvanced : false
-						}));
+						tabs.value = JSON.parse(storedTabs).map(t => {
+							const mapped = {
+								...t,
+								timerId: null,
+								activeDropdown: null,
+								scrollLock: t.scrollLock !== undefined ? t.scrollLock : true,
+								excludeTestStr: t.excludeTestStr || '',
+								includeTestStr: t.includeTestStr || '',
+								showAdvanced: t.showAdvanced !== undefined ? t.showAdvanced : false
+							};
+							initTabHistory(mapped);
+							
+							if (!mapped.config) mapped.config = JSON.parse(JSON.stringify(commonConfig.value));
+							if (!mapped.config.settings) mapped.config.settings = {};
+							if (!mapped.config.settings.autoRetry) {
+								mapped.config.settings.autoRetry = {
+									enabled: true,
+									maxAttempts: 3,
+									intervals: [30, 120, 600],
+									intervalsStr: '30, 120, 600'
+								};
+							} else {
+								if (mapped.config.settings.autoRetry.enabled === undefined) mapped.config.settings.autoRetry.enabled = true;
+								if (mapped.config.settings.autoRetry.maxAttempts === undefined) mapped.config.settings.autoRetry.maxAttempts = 3;
+								if (!mapped.config.settings.autoRetry.intervals) mapped.config.settings.autoRetry.intervals = [30, 120, 600];
+								if (!mapped.config.settings.autoRetry.intervalsStr) mapped.config.settings.autoRetry.intervalsStr = mapped.config.settings.autoRetry.intervals.join(', ');
+							}
+							return mapped;
+						});
 					}
+
+					updateRegexHistoryFromTabs();
 
 					const storedActiveTab = localStorage.getItem('telegram_forwarder_active_tab_id');
 					if (storedActiveTab) activeTabId.value = JSON.parse(storedActiveTab);
@@ -1770,6 +1884,7 @@
 							config: JSON.parse(JSON.stringify(commonConfig.value))
 						};
 						
+						initTabHistory(newTabObj);
 						tabs.value.push(newTabObj);
 						activeTabId.value = newId;
 						
@@ -1857,8 +1972,10 @@
 					if (!newTagVal || !newTagVal.trim()) return;
 					const currentTags = tab.config.filters.text[key] ? tab.config.filters.text[key].split('|').filter(x => x) : [];
 					if (!currentTags.includes(newTagVal.trim())) {
+						recordRegexHistory(tab, key);
 						currentTags.push(newTagVal.trim());
 						tab.config.filters.text[key] = currentTags.join('|');
+						addRegexToHistory(tab.config.filters.text[key]);
 						saveState();
 						showToast(`选项「${newTagVal.trim()}」已加入规则！`, 'success');
 					}
@@ -1867,7 +1984,9 @@
 				const removeRegexTag = (tab, key, tagToRemove) => {
 					const currentTags = tab.config.filters.text[key] ? tab.config.filters.text[key].split('|').filter(x => x) : [];
 					const updated = currentTags.filter(t => t !== tagToRemove);
+					recordRegexHistory(tab, key);
 					tab.config.filters.text[key] = updated.join('|');
+					addRegexToHistory(tab.config.filters.text[key]);
 					saveState();
 					showToast('过滤规则已更新！', 'info');
 				};
@@ -1948,15 +2067,19 @@
 							sessions.value = data.sessions;
 							if (data.destinations) destinations.value = data.destinations;
 							commonConfig.value = data.commonConfig;
-							tabs.value = data.tabs.map(t => ({
-								...t,
-								timerId: null,
-								activeDropdown: null,
-								scrollLock: t.scrollLock !== undefined ? t.scrollLock : true,
-								excludeTestStr: t.excludeTestStr || '',
-								includeTestStr: t.includeTestStr || '',
-								showAdvanced: t.showAdvanced !== undefined ? t.showAdvanced : false
-							}));
+							tabs.value = data.tabs.map(t => {
+								const mapped = {
+									...t,
+									timerId: null,
+									activeDropdown: null,
+									scrollLock: t.scrollLock !== undefined ? t.scrollLock : true,
+									excludeTestStr: t.excludeTestStr || '',
+									includeTestStr: t.includeTestStr || '',
+									showAdvanced: t.showAdvanced !== undefined ? t.showAdvanced : false
+								};
+								initTabHistory(mapped);
+								return mapped;
+							});
 							if (data.regexHistory) regexHistory.value = data.regexHistory;
 							
 							activeTabId.value = tabs.value.length ? tabs.value[0].id : null;
@@ -1980,14 +2103,111 @@
 					}
 				};
 
-				const saveToHistory = (reg) => {
-					if (!reg || !reg.trim()) return;
-					const r = reg.trim();
-					if (!regexHistory.value.includes(r)) {
-						regexHistory.value.unshift(r);
-						if (regexHistory.value.length > 10) regexHistory.value.pop();
+				const initTabHistory = (tab) => {
+					if (!tab) return;
+					if (!tab.undoStackExclude) tab.undoStackExclude = [];
+					if (!tab.redoStackExclude) tab.redoStackExclude = [];
+					if (!tab.undoStackInclude) tab.undoStackInclude = [];
+					if (!tab.redoStackInclude) tab.redoStackInclude = [];
+					if (tab.retryAttempts === undefined) tab.retryAttempts = 0;
+				};
+
+				const recordRegexHistory = (tab, key) => {
+					initTabHistory(tab);
+					const currentVal = tab.config.filters.text[key] || '';
+					const undoStack = key === 'excludeRegex' ? tab.undoStackExclude : tab.undoStackInclude;
+					const redoStack = key === 'excludeRegex' ? tab.redoStackExclude : tab.redoStackInclude;
+					
+					if (undoStack.length === 0 || undoStack[undoStack.length - 1] !== currentVal) {
+						undoStack.push(currentVal);
+						if (undoStack.length > 50) {
+							undoStack.shift();
+						}
+					}
+					redoStack.length = 0;
+				};
+
+				const undoRegex = (tab, key) => {
+					initTabHistory(tab);
+					const undoStack = key === 'excludeRegex' ? tab.undoStackExclude : tab.undoStackInclude;
+					const redoStack = key === 'excludeRegex' ? tab.redoStackExclude : tab.redoStackInclude;
+					
+					if (undoStack.length > 0) {
+						const currentVal = tab.config.filters.text[key] || '';
+						redoStack.push(currentVal);
+						const prevVal = undoStack.pop();
+						tab.config.filters.text[key] = prevVal;
 						saveState();
 					}
+				};
+
+				const redoRegex = (tab, key) => {
+					initTabHistory(tab);
+					const undoStack = key === 'excludeRegex' ? tab.undoStackExclude : tab.undoStackInclude;
+					const redoStack = key === 'excludeRegex' ? tab.redoStackExclude : tab.redoStackInclude;
+					
+					if (redoStack.length > 0) {
+						const currentVal = tab.config.filters.text[key] || '';
+						undoStack.push(currentVal);
+						const nextVal = redoStack.pop();
+						tab.config.filters.text[key] = nextVal;
+						saveState();
+					}
+				};
+
+				const canUndoRegex = (tab, key) => {
+					if (!tab) return false;
+					initTabHistory(tab);
+					const undoStack = key === 'excludeRegex' ? tab.undoStackExclude : tab.undoStackInclude;
+					return undoStack.length > 0;
+				};
+
+				const canRedoRegex = (tab, key) => {
+					if (!tab) return false;
+					initTabHistory(tab);
+					const redoStack = key === 'excludeRegex' ? tab.redoStackExclude : tab.redoStackInclude;
+					return redoStack.length > 0;
+				};
+
+				const clearRegex = (tab, key) => {
+					recordRegexHistory(tab, key);
+					tab.config.filters.text[key] = '';
+					saveState();
+				};
+
+				const addRegexToHistory = (reg) => {
+					if (!reg || !reg.trim()) return;
+					const r = reg.trim();
+					regexHistory.value = [r, ...regexHistory.value.filter(h => h !== r)].slice(0, 20);
+				};
+
+				const removeHistoryItem = (h) => {
+					regexHistory.value = regexHistory.value.filter(item => item !== h);
+					saveState();
+					showToast('历史记录已删除！', 'info');
+				};
+
+				const updateRegexHistoryFromTabs = () => {
+					tabs.value.forEach(t => {
+						if (t.config && t.config.filters && t.config.filters.text) {
+							const exc = (t.config.filters.text.excludeRegex || '').trim();
+							const inc = (t.config.filters.text.includeRegex || '').trim();
+							if (exc && !regexHistory.value.includes(exc)) {
+								regexHistory.value.unshift(exc);
+							}
+							if (inc && !regexHistory.value.includes(inc)) {
+								regexHistory.value.unshift(inc);
+							}
+						}
+					});
+					if (regexHistory.value.length > 20) {
+						regexHistory.value = regexHistory.value.slice(0, 20);
+					}
+				};
+
+				const saveToHistory = (reg) => {
+					addRegexToHistory(reg);
+					saveState();
 				};
 
 				const toggleHistoryDropdown = (tab, type) => {
@@ -1995,8 +2215,10 @@
 				};
 
 				const applyRegex = (tab, targetKey, regValue) => {
+					recordRegexHistory(tab, targetKey);
 					tab.config.filters.text[targetKey] = regValue;
 					tab.activeDropdown = null;
+					addRegexToHistory(regValue);
 					saveState();
 				};
 
@@ -2150,6 +2372,7 @@
 						}
 
 						if (response.ok && data.success) {
+							tab.retryAttempts = 0;
 							if (data.empty) {
 								tab.consecutiveFailures = (tab.consecutiveFailures || 0) + 1;
 								appendTabLog(tab, 'Warn', `消息 #${tab.currentId} 为空。连续空进度: ${tab.consecutiveFailures}/${tab.config.settings.maxConsecutiveFailures}`);
@@ -2189,6 +2412,26 @@
 						const finalDelay = Math.round(delay * jitter);
 						
 						tab.timerId = setTimeout(() => runForwardLoop(tab), finalDelay);
+					} else if (tab.status === 'error') {
+						const autoRetry = tab.config.settings.autoRetry || { enabled: true, maxAttempts: 3, intervals: [30, 120, 600] };
+						if (autoRetry.enabled) {
+							if (tab.retryAttempts === undefined) tab.retryAttempts = 0;
+							if (tab.retryAttempts < autoRetry.maxAttempts) {
+								tab.retryAttempts++;
+								const maxAttempts = autoRetry.maxAttempts;
+								const idx = tab.retryAttempts - 1;
+								const intervals = autoRetry.intervals || [30, 120, 600];
+								const interval = intervals[idx] !== undefined ? intervals[idx] : intervals[intervals.length - 1];
+								
+								tab.status = 'running';
+								appendTabLog(tab, 'Warn', `🔄 转发进程异常中止。系统已启用自动重试：将于 ${interval} 秒后进行第 ${tab.retryAttempts}/${maxAttempts} 次自动恢复...`);
+								saveState();
+								
+								tab.timerId = setTimeout(() => runForwardLoop(tab), interval * 1000);
+							} else {
+								appendTabLog(tab, 'Error', `❌ 转发进程异常中止。已达到自动重试次数上限 (${autoRetry.maxAttempts} 次)，自动重试停止，等待手动处理。`);
+							}
+						}
 					}
 				};
 
@@ -2203,6 +2446,7 @@
 					}
 
 					tab.status = 'running';
+					tab.retryAttempts = 0;
 					appendTabLog(tab, 'Info', '▶️ 自动转发任务进程开启...');
 					saveState();
 					
@@ -2279,6 +2523,11 @@
 					addRegexTag,
 					removeRegexTag,
 					syncRegexToCommon,
+					undoRegex,
+					redoRegex,
+					canUndoRegex,
+					canRedoRegex,
+					clearRegex,
 					scrollToTop,
 					scrollToBottom,
 					updateUpcomingPreview,
@@ -2287,6 +2536,7 @@
 					importFromClipboard,
 					testRegexResult,
 					saveToHistory,
+					removeHistoryItem,
 					toggleHistoryDropdown,
 					applyRegex,
 					triggerPreview,
